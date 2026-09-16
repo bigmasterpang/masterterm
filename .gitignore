@@ -1,0 +1,48 @@
+# Build output
+build/
+build-*/
+cmake-build-*/
+vcpkg_installed/
+third_party/vcpkg/
+third_party/vcpkg-install.*.log
+.gitee-askpass.cmd
+
+# MSVC generated files
+*.user
+*.suo
+*.vcxproj.user
+.vs/
+
+# Runtime deployment output
+dist/
+*.dll
+*.pdb
+*.ilk
+vc_redist.x64.exe
+platforms/
+styles/
+imageformats/
+iconengines/
+networkinformation/
+tls/
+
+# Credentials and local secrets
+token
+token.*
+*.key
+*.pem
+*.ppk
+id_rsa
+id_ed25519
+.env
+.env.*
+*.local.json
+*.local.ps1
+*github_tokens*
+*send-wechat*
+
+# Local logs and temporary files
+*.log
+*.tmp
+*.dmp
+NUL

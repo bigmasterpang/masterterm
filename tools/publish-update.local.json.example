@@ -1,0 +1,14 @@
+{
+  "Identity": "C:/path/to/your/id_rsa",
+  "Connection": "user@your-server.example.com",
+  "UpdateBaseUrl": "https://your-server.example.com/updates",
+  "PublishTargets": [
+    "master-server",
+    "mirror-server"
+  ],
+  "MasterPortalUrl": "https://portal.example.com",
+  "MasterPortalToken": "your_portal_secret_token",
+  "AliPortalUrl": "https://mirror.example.com",
+  "AliPortalToken": "your_mirror_secret_token",
+  "NotifyScript": "C:/path/to/send-notification.ps1"
+}

@@ -1,0 +1,1379 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline';">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MasterTerm</title>
+  <style>
+    /* Stay transparent while the native splash is shown through the WebView2
+       controller; the page paints its own background only once the frontend
+       is ready, so there is exactly one startup screen. */
+    html, body { background: transparent; }
+    #startup-splash {
+      position: fixed; inset: 0; z-index: 10000;
+      display: none; place-items: center;
+      background: #111827;
+    }
+    #startup-splash .splash-card { text-align: center; }
+    #startup-splash .splash-logo {
+      color: #e5e7eb; letter-spacing: .5px;
+      font: 600 26px/1.2 "Segoe UI", sans-serif;
+    }
+    #startup-splash .splash-bar {
+      width: 240px; height: 6px; margin: 18px auto 0;
+      background: #374151; border-radius: 3px; overflow: hidden;
+    }
+    #startup-splash .splash-fill {
+      display: block; width: 0%; height: 100%;
+      background: linear-gradient(90deg, #3b82f6, #60a5fa);
+      border-radius: 3px;
+      transition: width .25s linear;
+    }
+    #startup-splash .splash-text {
+      margin-top: 12px; color: #9ca3af;
+      font: 13px/1.4 "Segoe UI", sans-serif;
+    }
+    #startup-splash.fade-out { opacity: 0; transition: opacity .35s ease; }
+  </style>
+  <link rel="stylesheet" href="vendor/xterm/xterm.css">
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <div id="startup-splash" aria-hidden="true">
+    <div class="splash-card">
+      <div class="splash-logo">MasterTerm</div>
+      <div class="splash-bar"><span class="splash-fill"></span></div>
+      <div class="splash-text">正在启动…</div>
+    </div>
+  </div>
+  <div id="rdp-fullscreen-bar" hidden>
+    <span title="RDP 全屏">RDP</span>
+    <button id="rdp-fullscreen-pin" type="button" title="固定或自动隐藏控制栏">📌</button>
+    <button id="rdp-fullscreen-display" type="button" title="显示设置">▣</button>
+    <button id="rdp-fullscreen-connection" type="button" title="连接设置">↔</button>
+    <button id="rdp-fullscreen-keyboard" type="button" title="远程工具">⚙</button>
+    <button id="rdp-fullscreen-quality" type="button" title="查看实际质量">ⓘ</button>
+    <button id="rdp-fullscreen-close" type="button" title="关闭连接">×</button>
+    <div id="rdp-fullscreen-menu" hidden>
+      <button type="button" data-rdp-menu="display" data-rdp-action="display-fit">适应窗口</button>
+      <button type="button" data-rdp-menu="display" data-rdp-action="display-refresh">刷新分辨率</button>
+      <button type="button" data-rdp-menu="display" data-rdp-action="display-original">关闭智能缩放</button>
+      <button type="button" data-rdp-menu="connection" data-rdp-action="reconnect">重新连接</button>
+      <button type="button" data-rdp-menu="connection" data-rdp-action="exit-fullscreen">退出全屏</button>
+      <button type="button" data-rdp-menu="connection" data-rdp-action="close">关闭连接</button>
+      <button type="button" data-rdp-menu="keyboard" data-rdp-action="tool-cad">Ctrl + Alt + Del</button>
+      <button type="button" data-rdp-menu="keyboard" data-rdp-action="tool-win">Windows 徽标键</button>
+      <button type="button" data-rdp-menu="keyboard" data-rdp-action="tool-run">运行 (Win + R)</button>
+      <button type="button" data-rdp-menu="keyboard" data-rdp-action="tool-task-manager">任务管理器</button>
+      <button type="button" data-rdp-menu="keyboard" data-rdp-action="tool-explorer">资源管理器</button>
+      <button type="button" data-rdp-menu="keyboard" data-rdp-action="tool-cmd">命令提示符 (Cmd)</button>
+      <button type="button" data-rdp-menu="keyboard" data-rdp-action="tool-control-panel">控制面板</button>
+      <button type="button" data-rdp-menu="keyboard" data-rdp-action="tool-registry-editor">注册表编辑器</button>
+      <button type="button" data-rdp-menu="keyboard" data-rdp-action="tool-windows-settings">Windows 设置</button>
+      <button type="button" data-rdp-menu="keyboard" data-rdp-action="tool-services">服务管理</button>
+      <button type="button" data-rdp-menu="keyboard" data-rdp-action="tool-device-manager">设备管理器</button>
+      <button type="button" data-rdp-menu="keyboard" data-rdp-action="tool-print-screen">截取屏幕 (PrintScreen)</button>
+    </div>
+  </div>
+  <div id="rdp-quality-panel" hidden role="dialog" aria-label="RDP 实际质量">
+    <div class="rdp-quality-header">
+      <strong>RDP 实际质量</strong>
+      <button id="rdp-quality-close" type="button" title="关闭">×</button>
+    </div>
+    <pre id="rdp-quality-content">等待连接协商…</pre>
+  </div>
+  <div id="rdp-fullscreen-hot-zone" hidden aria-hidden="true"></div>
+  <script>
+    // Watchdog: if the frontend script never runs or fails, replace the spinner
+    // with a visible error instead of leaving the loading animation forever.
+    (function () {
+      var splash = document.getElementById("startup-splash");
+      if (!splash) return;
+      window.addEventListener("error", function (e) {
+        if (!document.getElementById("startup-splash")) return;
+        var text = splash.querySelector(".splash-text");
+        var bar = splash.querySelector(".splash-bar");
+        if (bar) bar.style.display = "none";
+        if (text) {
+          var msg = e && e.message ? e.message : String(e);
+          text.textContent = "前端脚本执行异常：" + msg + "。请重新打开程序或更新安装包。";
+        }
+        document.documentElement.style.background = "#111827";
+        splash.style.display = "grid";
+      });
+      window.setTimeout(function () {
+        if (!document.getElementById("startup-splash")) return;
+        var text = splash.querySelector(".splash-text");
+        var bar = splash.querySelector(".splash-bar");
+        if (bar) bar.style.display = "none";
+        if (text) text.textContent =
+          "界面加载超时：前端脚本未能启动。请重新打开程序；" +
+          "若仍无法进入界面，请检查 web 目录是否与 MasterTerm.exe 在同一目录。";
+        document.documentElement.style.background = "#111827";
+        splash.style.display = "grid";
+      }, 10000);
+    })();
+  </script>
+  <header>
+    <div class="header-actions">
+      <!-- 快速跳转 (Ctrl+P) -->
+      <button id="quick-switcher-button" class="header-button quick-switcher-btn" type="button" title="快速跳转连接 (Ctrl+P)">
+        <span class="header-btn-icon">🔍</span>
+        <span>快速跳转</span>
+        <kbd class="header-kbd">Ctrl+P</kbd>
+      </button>
+
+      <div class="header-separator"></div>
+
+      <!-- 工具 ▾ (Tools dropdown) -->
+      <div class="header-dropdown-wrap">
+        <button id="tools-menu-button" class="header-button header-dropdown-btn" type="button" title="常用工具箱">
+          <span>🛠️ 工具 ▾</span>
+          <span id="tools-broadcast-indicator" class="broadcast-active-dot" hidden title="正在广播输入"></span>
+        </button>
+        <div id="tools-menu" class="context-menu header-dropdown-menu" role="menu" hidden>
+          <button id="broadcast-input-button" class="header-dropdown-item" type="button" title="多终端实时按键广播输入 (Alt+B)" aria-pressed="false">
+            <span class="menu-item-icon">📻</span>
+            <span class="menu-item-label">广播输入</span>
+            <span class="menu-item-shortcut">Alt+B</span>
+            <span id="broadcast-menu-check" class="menu-item-check" hidden>✓</span>
+          </button>
+          <button id="tunnel-button" class="header-dropdown-item" type="button" title="管理 SSH 端口转发规则">
+            <span class="menu-item-icon">🔀</span>
+            <span class="menu-item-label">端口转发</span>
+          </button>
+          <button id="header-batch-cmd-btn" class="header-dropdown-item" type="button" title="向多个终端批量下发命令">
+            <span class="menu-item-icon">⚡</span>
+            <span class="menu-item-label">批量执行…</span>
+          </button>
+          <button id="header-cloud-sync-btn" class="header-dropdown-item" type="button" title="打开云同步与备份配置">
+            <span class="menu-item-icon">☁️</span>
+            <span class="menu-item-label">云同步</span>
+          </button>
+          <div class="header-menu-divider"></div>
+          <button id="header-diagnostics-btn" class="header-dropdown-item" type="button" title="查看终端诊断与异常日志">
+            <span class="menu-item-icon">🩺</span>
+            <span class="menu-item-label">诊断日志</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 主题 ▾ (Theme) -->
+      <button id="theme-button" class="header-button" type="button" title="界面与终端配色主题">🎨 主题 ▾</button>
+
+      <!-- 系统按键 ▾ (RDP专属) -->
+      <button id="rdp-key-toolbox-btn" class="header-button" type="button" title="注入远程系统按键与快捷工具" hidden>💻 系统按键 ▾</button>
+
+      <div class="header-separator"></div>
+
+      <!-- 设置 (Ctrl+,) -->
+      <button id="settings-button" class="header-button" type="button" title="偏好设置 (Ctrl+,)">
+        <span class="header-btn-icon">⚙️</span>
+        <span>设置</span>
+        <kbd class="header-kbd">Ctrl+,</kbd>
+      </button>
+
+      <!-- 帮助 ▾ (Help dropdown) -->
+      <div class="header-dropdown-wrap">
+        <button id="help-menu-button" class="header-button header-dropdown-btn" type="button" title="快捷键与关于">
+          <span>❓ 帮助 ▾</span>
+        </button>
+        <div id="help-menu" class="context-menu header-dropdown-menu" role="menu" hidden>
+          <button id="shortcuts-help-button" class="header-dropdown-item" type="button" title="快捷键速查中心 (Ctrl+/)">
+            <span class="menu-item-icon">⌨️</span>
+            <span class="menu-item-label">快捷键速查</span>
+            <span class="menu-item-shortcut">Ctrl+/</span>
+          </button>
+          <div class="header-menu-divider"></div>
+          <button id="header-check-updates-btn" class="header-dropdown-item" type="button" title="检查新版本">
+            <span class="menu-item-icon">🔄</span>
+            <span class="menu-item-label">检查更新…</span>
+          </button>
+          <button id="header-about-btn" class="header-dropdown-item" type="button" title="关于 MasterTerm">
+            <span class="menu-item-icon">ℹ️</span>
+            <span class="menu-item-label">关于 MasterTerm</span>
+          </button>
+        </div>
+      </div>
+
+      <span id="status">正在连接后端…</span>
+    </div>
+    <div id="server-metrics" class="server-metrics" aria-live="polite" hidden></div>
+  </header>
+  <main id="workspace" class="workspace sidebar-workspace">
+    <nav id="function-tabs" class="function-tabs" aria-label="功能切换">
+      <button class="function-tab active" type="button" data-panel="connections" title="连接" aria-label="连接"><svg viewBox="0 0 24 24"><path d="M7 4h10v6H7zM12 10v5m-5 5h10M7 15h10v5H7z"/></svg></button>
+      <button class="function-tab" type="button" data-panel="sftp" title="SFTP" aria-label="SFTP"><svg viewBox="0 0 24 24"><path d="M3 6h7l2 2h9v11H3zM8 14h8m-4-4v8"/></svg><span id="sftp-function-badge" class="function-tab-badge" hidden></span></button>
+      <button class="function-tab" type="button" data-panel="snippets" title="常用命令" aria-label="常用命令"><svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></button>
+      <button class="function-tab" type="button" data-panel="tunnels" title="端口转发" aria-label="端口转发"><svg viewBox="0 0 24 24"><path d="M17 1l4 4-4 4M3 5h18M7 23l-4-4 4-4M21 19H3"/></svg><span id="sidebar-tunnel-badge" class="function-tab-badge" hidden></span></button>
+      <button class="function-tab" type="button" data-panel="cloud" title="云备份" aria-label="云备份"><svg viewBox="0 0 24 24"><path d="M19 18a4 4 0 0 0 .5-8 7 7 0 0 0-13.8 1.5A5 5 0 0 0 6 20h13"/></svg></button>
+    </nav>
+    <div id="sidebar-flyout-occlusion" hidden aria-hidden="true"></div>
+    <div id="sidebar-card-shadow" aria-hidden="true"></div>
+    <section id="function-panels" class="function-panels">
+      <div class="sidebar-panel-header">
+        <div class="sidebar-panel-identity">
+          <strong id="sidebar-panel-title">连接</strong>
+          <select id="sidebar-sftp-session" title="切换 SFTP 连接" aria-label="切换 SFTP 连接" hidden></select>
+        </div>
+        <button id="sidebar-pin" class="sidebar-pin" type="button" title="启用自动隐藏" aria-label="启用自动隐藏" aria-pressed="true">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6l-1 5 3 3v2h-4v7l-1 1-1-1v-7H7v-2l3-3z"/></svg>
+        </button>
+      </div>
+      <article class="work-card server-card function-panel active" data-card="servers" data-panel="connections">
+        <div class="card-body server-list-body">
+          <div class="server-toolbar">
+            <button id="server-create" type="button" title="新建连接" aria-label="新建连接">＋</button>
+            <input id="server-search-input" type="search" placeholder="搜索连接…（名称 / 地址 / 用户名 / 工作区）" aria-label="搜索连接">
+            <select id="workspace-filter-select" title="按工作区筛选连接" aria-label="按工作区筛选连接"></select>
+            <button id="server-view-options" type="button" title="排序与分组" aria-label="排序与分组" aria-expanded="false">☷</button>
+            <button id="workspace-manage" class="workspace-manage" type="button" title="管理工作区" aria-label="管理工作区">
+              <svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
+            </button>
+          </div>
+          <div id="servers">加载中…</div>
+        </div>
+      </article>
+      <article class="work-card sftp-card function-panel" data-card="sftp" data-panel="sftp">
+        <div class="card-body">
+          <div class="sftp-split">
+            <section class="sftp-pane remote-pane">
+              <div class="sftp-pane-title"><strong>远程目录</strong><input id="sftp-path" value="/" aria-label="远程路径"></div>
+              <div id="sftp" class="sftp">
+                <div class="sftp-toolbar">
+                  <button id="sftp-back" class="icon-button" type="button" title="后退" aria-label="后退"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>
+                  <button id="sftp-forward" class="icon-button" type="button" title="前进" aria-label="前进"><svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></button>
+                  <button id="sftp-up" class="icon-button" type="button" title="上级目录" aria-label="上级目录"><svg viewBox="0 0 24 24"><path d="M12 19V5m-6 6l6-6 6 6"/></svg></button>
+                  <button id="sftp-refresh" class="icon-button" type="button" title="刷新" aria-label="刷新"><svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 10-2.3 5.7M20 4v7h-7"/></svg></button>
+                  <button id="sftp-new-folder" class="icon-button" type="button" title="新建文件夹" aria-label="新建文件夹"><svg viewBox="0 0 24 24"><path d="M3 7h7l2 2h9v10H3zM15 11v6m-3-3h6"/></svg></button>
+                  <button id="sftp-new-file" class="icon-button" type="button" title="新建文件" aria-label="新建文件"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6zM14 3v5h5M12 11v6m-3-3h6"/></svg></button>
+                  <button id="sftp-upload" class="icon-button" type="button" title="选择其他本机文件上传" aria-label="选择其他本机文件上传"><svg viewBox="0 0 24 24"><path d="M12 16V4m-5 5l5-5 5 5M5 20h14"/></svg></button>
+                  <button id="sftp-download" class="icon-button" type="button" title="下载选中的远程项目" aria-label="下载选中的远程项目" disabled><svg viewBox="0 0 24 24"><path d="M12 4v12m-5-5l5 5 5-5M5 20h14"/></svg></button>
+                  <button id="sftp-local-toggle" class="icon-button" type="button" title="显示本机目录" aria-label="显示本机目录" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M3 5h18v14H3zM12 5v14M7 12h2m6 0h2"/></svg></button>
+                  <button id="sftp-favorite-toggle" class="icon-button" type="button" title="显示收藏目录" aria-label="显示收藏目录"><svg viewBox="0 0 24 24"><path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9z"/></svg></button>
+                  <button id="sftp-open-in-terminal" class="icon-button" type="button" title="在关联 SSH 终端中进入此目录 (cd)" aria-label="在关联 SSH 终端中进入此目录"><svg viewBox="0 0 24 24"><path d="M4 17l6-6-6-6m8 14h8"/></svg></button>
+                </div>
+                <div class="sftp-filter-bar">
+                  <svg class="sftp-filter-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+                  <input id="sftp-filter-input" type="search" placeholder="在当前目录中筛选文件… (Esc 清除)" class="sftp-filter-input" title="实时筛选当前目录文件 (Esc 清空)">
+                  <button id="sftp-filter-clear" class="sftp-filter-clear" type="button" title="清空筛选 (Esc)" hidden>×</button>
+                </div>
+                <div class="sftp-table-wrap">
+                  <div id="sftp-jump-indicator" class="sftp-jump-indicator" hidden></div>
+                  <table class="sftp-table">
+                    <thead><tr><th data-sort="name">名称</th><th data-sort="size">大小</th><th data-sort="modified">修改时间</th><th data-sort="permissions">权限</th><th data-sort="owner">所有者</th></tr></thead>
+                    <tbody id="sftp-files"></tbody>
+                  </table>
+                  <div id="sftp-empty" class="sftp-empty">连接 SSH 后自动打开 SFTP</div>
+                </div>
+              </div>
+            </section>
+            <div class="sftp-pane-divider" aria-hidden="true" hidden></div>
+            <section class="sftp-pane local-pane" hidden>
+              <div class="sftp-pane-title"><strong>本机目录</strong><input id="local-path" aria-label="本机路径"><button id="local-open-folder" class="icon-button" type="button" title="打开文件夹" aria-label="打开文件夹"><svg viewBox="0 0 24 24"><path d="M3 6h7l2 2h9v11H3zM3 6v-2h7l2 2"/></svg></button></div>
+              <div class="local-browser">
+                <div class="local-toolbar">
+                  <button id="local-back" class="icon-button" type="button" title="后退" aria-label="后退"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>
+                  <button id="local-up" class="icon-button" type="button" title="上级目录" aria-label="上级目录"><svg viewBox="0 0 24 24"><path d="M12 19V5m-6 6l6-6 6 6"/></svg></button>
+                  <button id="local-refresh" class="icon-button" type="button" title="刷新" aria-label="刷新"><svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 10-2.3 5.7M20 4v7h-7"/></svg></button>
+                  <button id="local-upload" class="icon-button" type="button" title="上传选中文件到当前远程目录" aria-label="上传选中文件到当前远程目录" disabled><svg viewBox="0 0 24 24"><path d="M12 16V4m-5 5l5-5 5 5M5 20h14"/></svg></button>
+                  <button id="local-favorite-toggle" class="icon-button" type="button" title="显示本机收藏目录" aria-label="显示本机收藏目录"><svg viewBox="0 0 24 24"><path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9z"/></svg></button>
+                </div>
+                <div class="local-table-wrap">
+                  <table class="local-table">
+                    <thead><tr><th data-sort="name">名称</th><th data-sort="size">大小</th><th data-sort="modified">修改时间</th></tr></thead>
+                    <tbody id="local-files"></tbody>
+                  </table>
+                  <div id="local-empty" class="local-empty">正在读取本机目录…</div>
+                </div>
+                <div id="local-status" class="local-status">选择文件后可上传到当前远程目录</div>
+              </div>
+            </section>
+          </div>
+          <div id="sftp-info-bar" class="sftp-info-bar"><div id="sftp-status-text">尚未连接 SSH 服务器</div><label class="sftp-verify-toggle" title="传输完成后校验文件大小；单文件传输可选 SHA-256 校验"><input id="sftp-verify-checksum" type="checkbox">传输后校验</label></div>
+          <div id="sftp-status" class="sftp-status">
+            <div id="sftp-status-resizer" class="sftp-status-resizer" title="拖动调整传输面板高度"></div>
+            <div id="sftp-transfer-row" class="sftp-transfer-row" hidden aria-hidden="true">
+              <div id="sftp-current-transfer-name" title=""></div>
+              <div class="sftp-progress-track"><div id="sftp-progress-bar"></div></div>
+              <div id="sftp-progress-percent">0%</div>
+              <div id="sftp-progress-speed">—</div>
+              <div id="sftp-progress-eta">—</div>
+            </div>
+            <div id="sftp-transfer-results" class="sftp-transfer-results">
+              <div class="sftp-transfer-tabs" role="tablist" aria-label="传输任务">
+                <button type="button" data-transfer-tab="queue" role="tab">队列 <span></span></button>
+                <button type="button" data-transfer-tab="failed" role="tab">传输失败 <span></span></button>
+                <button type="button" data-transfer-tab="success" role="tab">成功传输 <span></span></button>
+              </div>
+              <div class="sftp-transfer-toolbar">
+                <label class="sftp-transfer-filter" title="按文件名、路径、方向或错误原因筛选">
+                  <span>筛选</span>
+                  <input id="sftp-transfer-filter" type="search" placeholder="文件名、路径或错误原因" autocomplete="off">
+                </label>
+                <button id="sftp-transfer-retry-failed" type="button" class="sftp-transfer-toolbar-button" title="重新加入所有失败或取消的任务">重试失败任务</button>
+              </div>
+              <div class="sftp-transfer-grid-scroll">
+                <div class="sftp-transfer-results-header" aria-hidden="true">
+                  <span data-transfer-column="state">状态</span><span data-transfer-column="name">文件名</span><span data-transfer-column="direction">方向</span><span data-transfer-column="size">大小</span><span data-transfer-column="time">完成时间</span><span data-transfer-column="speed">速度</span><span data-transfer-column="status">状态 / 失败原因</span>
+                </div>
+                <div id="sftp-transfer-results-list" class="sftp-transfer-results-list"></div>
+              </div>
+            </div>
+            <div id="sftp-transfer-context-menu" class="context-menu" hidden>
+              <button type="button" data-transfer-action="pause-all">暂停全部任务</button>
+              <button type="button" data-transfer-action="resume-all">继续全部任务</button>
+              <button type="button" data-transfer-action="retry-failed-all">重试失败任务</button>
+              <button type="button" data-transfer-action="delete-all">删除全部任务</button>
+              <div class="context-menu-separator"></div>
+              <button type="button" data-transfer-action="sync">立即同步</button>
+              <button type="button" data-transfer-action="open-folder">打开本机副本目录</button>
+              <button type="button" data-transfer-action="stop-tracking">停止跟踪副本</button>
+              <button type="button" data-transfer-action="retry">重新传输</button>
+              <button type="button" data-transfer-action="details">查看详情</button>
+              <button type="button" data-transfer-action="up">提升优先级</button>
+              <button type="button" data-transfer-action="down">降低优先级</button>
+              <button type="button" data-transfer-action="pause">暂停任务</button>
+              <button type="button" data-transfer-action="cancel">取消任务</button>
+            </div>
+          </div>
+        </div>
+      </article>
+      <!-- 常用运维命令面板 -->
+      <article class="work-card snippets-card function-panel" data-card="snippets" data-panel="snippets">
+        <div class="card-body snippets-panel-body">
+          <div class="snippets-toolbar">
+            <input id="snippet-search-input" type="search" placeholder="搜索命令 / 描述 / 关键字…" aria-label="搜索常用命令">
+            <select id="snippet-category-select" title="按类别筛选" aria-label="按类别筛选">
+              <option value="all">全部分类</option>
+              <option value="package">打包解压</option>
+              <option value="find">查找定位</option>
+              <option value="search">文本检索</option>
+              <option value="system">系统监控</option>
+              <option value="network">网络端口</option>
+              <option value="service">服务进程</option>
+              <option value="docker">Docker容器</option>
+              <option value="custom">我的自定义</option>
+            </select>
+            <button id="snippet-add-btn" class="icon-button" type="button" title="添加自定义命令" aria-label="添加自定义命令">+</button>
+          </div>
+          <div id="snippet-custom-form" class="snippet-custom-form" hidden>
+            <div class="snippet-form-row">
+              <input id="snippet-form-desc" type="text" placeholder="指令描述（如：查看实时日志）" maxlength="60">
+            </div>
+            <div class="snippet-form-row">
+              <input id="snippet-form-cmd" type="text" placeholder="命令内容（如：tail -f /var/log/syslog）">
+            </div>
+            <div class="snippet-form-actions">
+              <button id="snippet-form-save" type="button" class="primary-btn">保存</button>
+              <button id="snippet-form-cancel" type="button">取消</button>
+            </div>
+          </div>
+          <div id="snippets-list" class="snippets-list"></div>
+          <div id="snippets-empty" class="snippets-empty" hidden>未找到匹配的运维命令</div>
+        </div>
+      </article>
+
+      <!-- 端口转发面板 -->
+      <article class="work-card tunnels-card function-panel" data-card="tunnels" data-panel="tunnels">
+        <div class="card-body tunnels-panel-body">
+          <div class="tunnels-toolbar">
+            <select id="sidebar-tunnel-session" title="关联 SSH 会话" aria-label="关联 SSH 会话"></select>
+            <button id="sidebar-tunnel-create-toggle" type="button" class="tunnel-add-button" title="新建转发通道">+ 新建转发</button>
+            <button id="sidebar-tunnel-refresh-btn" class="icon-button" type="button" title="刷新转发列表" aria-label="刷新转发列表">
+              <svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 10-2.3 5.7M20 4v7h-7"/></svg>
+            </button>
+          </div>
+          <div id="sidebar-tunnel-create-form" class="tunnel-create-form" hidden>
+            <div class="tunnel-form-group">
+              <label>转发模式</label>
+              <select id="sidebar-tunnel-mode">
+                <option value="local">本地转发 (Local: 本机 -> 远程目标)</option>
+                <option value="remote">远端转发 (Remote: 远端 -> 本机/内网)</option>
+              </select>
+            </div>
+            <div class="tunnel-form-row">
+              <div class="tunnel-form-col">
+                <label id="sidebar-tunnel-listen-port-label">监听端口</label>
+                <input id="sidebar-tunnel-listen-port" type="number" min="1" max="65535" placeholder="例如 8080">
+              </div>
+              <div class="tunnel-form-col">
+                <label id="sidebar-tunnel-target-port-label">目标端口</label>
+                <input id="sidebar-tunnel-target-port" type="number" min="1" max="65535" placeholder="例如 80">
+              </div>
+            </div>
+            <div class="tunnel-form-row">
+              <div class="tunnel-form-col">
+                <label>目标主机</label>
+                <input id="sidebar-tunnel-target-host" type="text" value="127.0.0.1" placeholder="127.0.0.1">
+              </div>
+              <div class="tunnel-form-col">
+                <label>监听主机</label>
+                <input id="sidebar-tunnel-listen-host" type="text" value="127.0.0.1" placeholder="127.0.0.1">
+              </div>
+            </div>
+            <div class="tunnel-form-actions">
+              <button id="sidebar-tunnel-submit-btn" type="button" class="primary-btn">开启转发</button>
+              <button id="sidebar-tunnel-cancel-btn" type="button">取消</button>
+            </div>
+          </div>
+          <div id="sidebar-tunnels-list" class="tunnels-list"></div>
+          <div id="sidebar-tunnels-empty" class="tunnels-empty">暂无活动的端口转发</div>
+        </div>
+      </article>
+
+      <!-- 云备份面板 -->
+      <article class="work-card cloud-card function-panel" data-card="cloud" data-panel="cloud">
+        <div class="card-body cloud-panel-body">
+          <div id="cloud-sidebar-logged-in" class="cloud-sidebar-section" hidden>
+            <div class="cloud-user-card">
+              <div class="cloud-user-avatar"><svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
+              <div class="cloud-user-meta">
+                <div class="cloud-user-name" id="cloud-sidebar-username">用户名</div>
+                <div class="cloud-user-status" id="cloud-sidebar-status">已连接到云端</div>
+              </div>
+              <button id="cloud-sidebar-logout" class="cloud-btn-link" type="button" title="退出账号">退出</button>
+            </div>
+            <div class="cloud-sync-info-row">
+              <span class="cloud-info-label">上次同步：</span>
+              <span id="cloud-sidebar-sync-time" class="cloud-info-val">尚未同步</span>
+            </div>
+            <div class="cloud-sidebar-actions">
+              <button id="cloud-sidebar-push" class="cloud-action-btn primary-btn" type="button">
+                <svg viewBox="0 0 24 24"><path d="M12 16V4m-5 5l5-5 5 5M5 20h14"/></svg>立即备份到云端
+              </button>
+              <button id="cloud-sidebar-pull" class="cloud-action-btn" type="button">
+                <svg viewBox="0 0 24 24"><path d="M12 4v12m-5-5l5 5 5-5M5 20h14"/></svg>从云端恢复配置
+              </button>
+            </div>
+            <div class="cloud-history-section">
+              <div class="cloud-section-header">
+                <strong>历史备份快照</strong>
+                <button id="cloud-sidebar-history-refresh" class="cloud-btn-link" type="button">刷新</button>
+              </div>
+              <div id="cloud-sidebar-history-list" class="cloud-sidebar-history-list"></div>
+              <div id="cloud-sidebar-history-empty" class="cloud-sidebar-history-empty" hidden>暂无云端历史快照</div>
+            </div>
+          </div>
+          <div id="cloud-sidebar-guest" class="cloud-sidebar-section">
+            <div class="cloud-guest-banner">
+              <svg viewBox="0 0 24 24"><path d="M19 18a4 4 0 0 0 .5-8 7 7 0 0 0-13.8 1.5A5 5 0 0 0 6 20h13"/></svg>
+              <strong>配置云端同步与备份</strong>
+              <p>跨设备安全同步连接配置、标签分组及快捷指令</p>
+            </div>
+            <div class="cloud-guest-form">
+              <label>用户名</label>
+              <input id="cloud-sidebar-input-user" type="text" placeholder="用户名" autocomplete="username">
+              <label>密码</label>
+              <input id="cloud-sidebar-input-pwd" type="password" placeholder="密码" autocomplete="current-password">
+              <div id="cloud-sidebar-guest-status" class="cloud-guest-status"></div>
+              <div class="cloud-guest-actions">
+                <button id="cloud-sidebar-login-btn" type="button" class="primary-btn">登录</button>
+                <button id="cloud-sidebar-register-btn" type="button">注册账号</button>
+              </div>
+            </div>
+          </div>
+          <div class="cloud-local-backup-bar">
+            <span>本地离线备份：</span>
+            <button id="cloud-sidebar-export-local" class="cloud-btn-link" type="button">导出文件</button>
+            <span class="divider">|</span>
+            <button id="cloud-sidebar-import-local" class="cloud-btn-link" type="button">导入文件</button>
+          </div>
+        </div>
+      </article>
+    </section>
+    <div id="sidebar-resizer" class="sidebar-resizer" title="拖动调整侧栏宽度"></div>
+    <article class="work-card terminal-card" data-card="terminal">
+      <div class="card-body">
+        <div id="terminal" class="terminal">
+          <div id="terminal-tabs" class="terminal-tabs" hidden>
+            <div class="terminal-create-group">
+              <button id="terminal-create-menu" class="terminal-create-menu" type="button"
+                      title="快速打开连接" aria-label="快速打开连接"
+                      aria-haspopup="menu" aria-expanded="false">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 9 5 5 5-5"/></svg>
+              </button>
+              <div id="terminal-create-dropdown" class="terminal-create-dropdown" role="menu" hidden>
+                <div class="terminal-create-dropdown-title">打开现有连接</div>
+                <div class="terminal-create-options"></div>
+              </div>
+            </div>
+          </div>
+          <div id="split-zoom-banner" class="split-zoom-banner" hidden>
+            <span class="split-zoom-text">🔍 当前窗口已放大聚焦显示</span>
+            <button id="split-zoom-restore-btn" type="button" title="还原双窗分屏 (Alt+M)">还原分屏 (Alt+M)</button>
+          </div>
+          <div id="terminal-search" class="terminal-search" hidden>
+            <input id="terminal-search-input" type="text"
+              placeholder="在终端中查找…（Enter 下一个，Shift+Enter 上一个，Esc 关闭）">
+            <span id="terminal-search-count"></span>
+            <button id="terminal-search-prev" class="terminal-search-btn" type="button" title="上一个匹配 (Shift+Enter / Shift+F3)">▲</button>
+            <button id="terminal-search-next" class="terminal-search-btn" type="button" title="下一个匹配 (Enter / F3)">▼</button>
+            <button id="terminal-search-case" class="terminal-search-btn terminal-search-toggle" type="button" title="区分大小写 (Alt+C)">Aa</button>
+            <button id="terminal-search-regex" class="terminal-search-btn terminal-search-toggle" type="button" title="正则表达式 (Alt+R)">.*</button>
+            <button id="terminal-search-close" class="terminal-search-btn" type="button" title="关闭搜索 (Esc)">×</button>
+          </div>
+          <div id="terminal-panels" class="terminal-panels">
+            <div id="terminal-empty" class="empty">选择服务器以打开终端</div>
+          </div>
+        </div>
+      </div>
+    </article>
+  </main>
+  <dialog id="command-favorites-dialog" class="action-dialog command-favorites-dialog">
+    <div class="dialog-title">
+      <strong>命令收藏</strong>
+      <button id="command-favorites-close" type="button" aria-label="关闭">×</button>
+    </div>
+    <div class="command-favorites-body">
+      <div class="command-favorites-toolbar">
+        <button id="command-favorite-add" type="button">＋ 新建收藏</button>
+        <button id="command-favorite-save-input" type="button">保存当前输入</button>
+      </div>
+      <div id="command-favorite-editor" class="command-favorite-editor" hidden>
+        <input id="command-favorite-edit-name" type="text" maxlength="40"
+          placeholder="名称（如：查看磁盘空间）">
+        <textarea id="command-favorite-edit-command" rows="3"
+          placeholder="命令内容（支持多行，发送时自动补回车）"></textarea>
+        <div class="command-favorite-editor-actions">
+          <button id="command-favorite-edit-save" type="button" class="primary">保存</button>
+          <button id="command-favorite-edit-cancel" type="button">取消</button>
+        </div>
+      </div>
+      <div id="command-favorites-list" class="command-favorites-list"></div>
+      <div id="command-favorites-empty" class="command-favorites-empty" hidden>
+        还没有收藏的命令。先打开一个终端输入命令，再点“保存当前输入”。
+      </div>
+    </div>
+    <div class="dialog-actions">
+      <button id="command-favorites-done" type="button">关闭</button>
+    </div>
+  </dialog>
+  <dialog id="cloud-diff-dialog" class="action-dialog cloud-diff-dialog">
+    <div class="dialog-title">
+      <strong>上传前差异预览</strong>
+      <button id="cloud-diff-close" type="button" aria-label="关闭">×</button>
+    </div>
+    <div class="cloud-diff-body">
+      <p class="cloud-diff-summary" id="cloud-diff-summary"></p>
+      <div class="cloud-diff-list" id="cloud-diff-list"></div>
+      <p class="cloud-diff-hint">
+        覆盖上传会用本机数据替换云端内容；合并上传会保留云端独有的连接和工作区。
+      </p>
+    </div>
+    <div class="dialog-actions">
+      <span id="cloud-diff-status"></span>
+      <button id="cloud-diff-cancel" type="button">取消</button>
+      <button id="cloud-diff-merge" type="button">合并上传</button>
+      <button id="cloud-diff-overwrite" class="primary" type="button">覆盖上传</button>
+    </div>
+  </dialog>
+  <dialog id="cloud-history-dialog" class="action-dialog cloud-history-dialog">
+    <div class="dialog-title">
+      <strong>云端历史版本</strong>
+      <button id="cloud-history-close" type="button" aria-label="关闭">×</button>
+    </div>
+    <div class="cloud-history-body">
+      <p class="cloud-history-hint">
+        公益备份服务每个普通用户账号最多保留 3 个历史版本。恢复某个版本会用该快照替换当前云端数据。
+      </p>
+      <div id="cloud-history-quota" class="cloud-history-quota" style="font-size: 12px; color: #94a3b8; margin-bottom: 4px;"></div>
+      <div id="cloud-history-list" class="cloud-history-list"></div>
+      <div id="cloud-history-empty" class="cloud-history-empty" hidden>云端暂无历史版本。</div>
+    </div>
+    <div class="dialog-actions">
+      <span id="cloud-history-status"></span>
+      <button id="cloud-history-done" type="button">关闭</button>
+    </div>
+  </dialog>
+  <dialog id="batch-command-dialog" class="action-dialog batch-command-dialog">
+    <div class="dialog-title">
+      <strong>批量执行命令</strong>
+      <button id="batch-command-close" type="button" aria-label="关闭">×</button>
+    </div>
+    <div class="batch-command-body">
+      <textarea id="batch-command-input" rows="3"
+        placeholder="输入要同时发送到所选终端的命令…"></textarea>
+      <div id="batch-command-sessions" class="batch-command-sessions"></div>
+    </div>
+    <div class="dialog-actions">
+      <span id="batch-command-status"></span>
+      <button id="batch-command-cancel" type="button">取消</button>
+      <button id="batch-command-run" class="primary" type="button">执行</button>
+    </div>
+  </dialog>
+  <dialog id="server-dialog">
+    <form id="server-form">
+      <div class="dialog-title">
+        <strong id="server-dialog-title">新建连接</strong>
+        <button id="server-dialog-close" type="button" aria-label="关闭">×</button>
+      </div>
+      <input id="server-index" type="hidden" value="-1">
+      <div class="form-grid">
+        <label>连接类型
+          <select id="server-type">
+            <option value="ssh">SSH</option>
+            <option value="rdp">远程桌面</option>
+            <option value="serial">串口</option>
+          </select>
+        </label>
+        <label>名称<input id="server-name" required autocomplete="off"></label>
+        <label id="server-user-field">用户名<input id="server-user" autocomplete="username" placeholder="例如 root"></label>
+        <label id="server-address-field">地址<input id="server-address" required autocomplete="off" placeholder="例如 server.example.com"></label>
+        <label id="server-serial-port-field" hidden>串口<span class="file-picker-field"><select id="server-serial-port" required></select><button id="server-serial-refresh" type="button">刷新</button></span><small id="server-serial-status">正在读取可用串口…</small></label>
+        <label><span id="server-port-label">端口</span><input id="server-port" type="number" min="1" max="65535" required></label>
+        <label>标签<select id="server-tag-mode">
+          <option value="auto">自动（按连接类型）</option>
+          <option value="custom">自定义</option>
+        </select></label>
+        <label id="server-custom-tag-field">自定义标签<input id="server-tag" autocomplete="off"></label>
+        <label>工作区<select id="server-workspace"></select></label>
+        <label>卡片颜色<input id="server-color" type="color" value="#8ab4f8"></label>
+        <div id="ssh-fields" class="form-section form-wide">
+          <label>密码<input id="server-password" type="password" autocomplete="new-password" placeholder="留空则保持现有密码"></label>
+          <label>私钥口令<input id="server-key-passphrase" type="password" autocomplete="new-password" placeholder="私钥加密时填写，留空则保持现有口令"></label>
+          <label class="form-wide">私钥路径<span class="file-picker-field"><input id="server-key-path" autocomplete="off" placeholder="例如 C:\Users\me\.ssh\id_ed25519"><button id="server-key-browse" type="button">浏览…</button></span></label>
+          <fieldset id="jump-server-fields" class="jump-server-section form-wide">
+            <legend>跳板机配置 (ProxyJump / 可选)</legend>
+            <div class="jump-server-grid">
+              <label>跳板机用户名<input id="server-proxy-user" autocomplete="username" placeholder="例如 jumpuser"></label>
+              <label>跳板机密码<input id="server-proxy-password" type="password" autocomplete="new-password" placeholder="留空则保持现有密码"></label>
+              <label>跳板机地址<input id="server-proxy-host" autocomplete="off" placeholder="例如 jump.example.com"></label>
+              <label>跳板机端口<input id="server-proxy-port" type="number" min="1" max="65535" value="22" placeholder="22"></label>
+              <label class="form-wide">跳板机私钥路径<span class="file-picker-field"><input id="server-proxy-key-path" autocomplete="off" placeholder="可选"><button id="server-proxy-key-browse" type="button">浏览…</button></span></label>
+            </div>
+          </fieldset>
+        </div>
+        <div id="serial-fields" class="form-section form-wide" hidden>
+          <label>数据位
+            <select id="server-data-bits"><option>8</option><option>7</option><option>6</option><option>5</option></select>
+          </label>
+          <label>校验
+            <select id="server-parity"><option value="none">无</option><option value="even">偶校验</option><option value="odd">奇校验</option><option value="mark">Mark</option><option value="space">Space</option></select>
+          </label>
+          <label>停止位
+            <select id="server-stop-bits"><option value="1">1</option><option value="1.5">1.5</option><option value="2">2</option></select>
+          </label>
+          <label>流控
+            <select id="server-flow-control"><option value="none">无</option><option value="software">软件</option><option value="hardware">硬件</option></select>
+          </label>
+        </div>
+        <section id="rdp-advanced-settings" class="form-section form-wide rdp-advanced-settings" hidden>
+          <div class="rdp-advanced-heading">高级配置（可选）</div>
+          <div class="rdp-advanced-groups">
+            <section class="rdp-advanced-group rdp-advanced-group-display">
+              <h3>显示与画质</h3>
+              <div class="rdp-advanced-grid">
+                <label>画质性能预设
+                  <select id="server-rdp-quality-preset">
+                    <option value="custom">自定义模式</option>
+                    <option value="high">高清质感 (32位色·ClearType·全特效)</option>
+                    <option value="balanced" selected>平衡自适应 (24位色·平滑字体)</option>
+                    <option value="speed">流畅低延迟 (16位色·极速响应·省带宽)</option>
+                  </select>
+                </label>
+                <label>显示色深
+                  <select id="server-rdp-color-depth">
+                    <option value="-1">默认 (32 位真彩色)</option><option value="16">16 位</option><option value="24">24 位</option><option value="32">32 位</option>
+                  </select>
+                </label>
+                <label>智能缩放
+                  <select id="server-rdp-smart-sizing">
+                    <option value="-1">默认 (关闭·原始比例)</option><option value="1">开启</option><option value="0">关闭</option>
+                  </select>
+                </label>
+                <label>连接速度
+                  <select id="server-rdp-network-type">
+                    <option value="-1">默认 (自动识别·局域网极速/广域网自适应)</option><option value="1">调制解调器（56 Kbps）</option><option value="2">低速宽带</option><option value="3">卫星</option><option value="4">高速宽带</option><option value="5">WAN</option><option value="6">LAN</option>
+                  </select>
+                </label>
+                <label>性能模式
+                  <select id="server-rdp-performance">
+                    <option value="-1">默认 (高画质·全特效)</option><option value="0">高画质</option><option value="15">节省带宽</option>
+                  </select>
+                </label>
+                <label class="rdp-toggle-option"><input id="server-rdp-wallpaper" type="checkbox" checked><span>桌面背景</span></label>
+                <label class="rdp-toggle-option"><input id="server-rdp-font-smoothing" type="checkbox" checked><span>字体平滑</span></label>
+                <label class="rdp-toggle-option"><input id="server-rdp-composition" type="checkbox" checked><span>桌面合成</span></label>
+                <label class="rdp-toggle-option"><input id="server-rdp-full-window-drag" type="checkbox" checked><span>拖动窗口时显示内容</span></label>
+                <label class="rdp-toggle-option"><input id="server-rdp-menu-animations" type="checkbox" checked><span>菜单动画</span></label>
+                <label class="rdp-toggle-option"><input id="server-rdp-visual-styles" type="checkbox" checked><span>视觉样式</span></label>
+                <label class="rdp-toggle-option"><input id="server-rdp-cursor-shadow" type="checkbox" checked><span>光标阴影</span></label>
+                <label class="rdp-toggle-option"><input id="server-rdp-cursor-settings" type="checkbox" checked><span>光标设置</span></label>
+                <label>全屏范围
+                  <select id="server-rdp-use-multimon" title="连接时协商，修改后需要重新打开连接">
+                    <option value="0">当前显示器</option><option value="1" selected>所有显示器</option>
+                  </select>
+                </label>
+              </div>
+            </section>
+            <section class="rdp-advanced-group">
+              <h3>输入与重定向</h3>
+              <div class="rdp-advanced-grid">
+                <label>键盘快捷键传递
+                  <select id="server-rdp-keyboard-hook">
+                    <option value="-1">默认 (仅全屏时传递)</option><option value="0">由本机处理</option><option value="1">仅全屏时传递</option><option value="2">始终传递到远端</option>
+                  </select>
+                </label>
+                <label>剪贴板重定向
+                  <select id="server-rdp-clipboard">
+                    <option value="-1">默认 (启用剪贴板同步)</option><option value="1">启用</option><option value="0">禁用</option>
+                  </select>
+                </label>
+                <label>声音重定向
+                  <select id="server-rdp-audio">
+                    <option value="-1">默认 (播放到本机)</option><option value="0">播放到本机</option><option value="1">不播放</option><option value="2">播放到远端</option>
+                  </select>
+                </label>
+                <label>磁盘重定向
+                  <select id="server-rdp-drives">
+                    <option value="-1">默认 (禁用·保护本机磁盘安全)</option><option value="1">启用</option><option value="0">禁用</option>
+                  </select>
+                </label>
+                <label>打印机重定向
+                  <select id="server-rdp-printers">
+                    <option value="-1">默认 (禁用)</option><option value="1">启用</option><option value="0">禁用</option>
+                  </select>
+                </label>
+              </div>
+            </section>
+            <section class="rdp-advanced-group">
+              <h3>连接与重连</h3>
+              <div class="rdp-advanced-grid">
+                <label>自动重连
+                  <select id="server-rdp-auto-reconnect">
+                    <option value="-1">默认 (启用·最多重试 3 次)</option><option value="1">启用</option><option value="0">禁用</option>
+                  </select>
+                </label>
+                <label>最大自动重连次数
+                  <input id="server-rdp-reconnect-attempts" type="number" min="1" max="20" value="3">
+                </label>
+              </div>
+            </section>
+          </div>
+          <small class="rdp-advanced-note">显示与画质选项默认全部启用；取消勾选即可主动关闭对应效果。连接、输入和重定向选项仍使用各自的详细配置。</small>
+        </section>
+      </div>
+      <div class="dialog-actions">
+        <span id="server-form-status"></span>
+        <button id="server-rdp-reset-defaults" type="button" class="rdp-reset-defaults-action" hidden>恢复 RDP 默认设置</button>
+        <button id="server-cancel" type="button">取消</button>
+        <button class="primary" type="submit">保存</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog id="settings-dialog" class="settings-dialog">
+    <form id="settings-form">
+      <div class="dialog-title"><strong>终端设置</strong><button id="settings-dialog-close" type="button" aria-label="关闭">×</button></div>
+      <div class="settings-body">
+        <fieldset id="cloud-sync-settings"><legend>云同步</legend>
+          <div class="cloud-sync-grid">
+            <label>用户名<input id="cloud-sync-username" autocomplete="username"></label>
+            <label>密码<input id="cloud-sync-password" type="password" autocomplete="new-password"></label>
+          </div>
+          <div class="cloud-sync-actions">
+            <button id="cloud-register" type="button" class="settings-inline-button">注册账号</button>
+            <button id="cloud-login" type="button" class="settings-inline-button">登录</button>
+            <button id="cloud-logout" type="button" class="settings-inline-button" hidden>退出登录</button>
+            <span id="cloud-sync-status" class="cloud-sync-status">未登录</span>
+          </div>
+          <div class="cloud-sync-actions">
+            <button id="cloud-push" type="button" class="settings-inline-button" disabled>上传全部到云端</button>
+            <button id="cloud-pull" type="button" class="settings-inline-button" disabled>从云端下载</button>
+            <button id="cloud-history" type="button" class="settings-inline-button" disabled>历史版本</button>
+            <span id="cloud-sync-time" class="cloud-sync-status"></span>
+          </div>
+          <small>同步内容：连接列表、工作区（含密码/私钥口令/私钥文件）、本地命令历史、软件设置。密码与私钥会以 DPAPI 加密后上传（其他设备无法解密，需重新填写）。</small>
+        </fieldset>
+        <fieldset><legend>SFTP 与传输</legend>
+          <div class="settings-check-grid">
+            <label class="setting-check"><input id="setting-local-panel" type="checkbox"> 打开 SFTP 时显示本地文件面板</label>
+            <label class="setting-check"><input id="setting-confirm-delete" type="checkbox"> 删除文件前确认</label>
+          </div>
+          <label>远程编辑自动同步<select id="setting-remote-edit-conflict"><option value="prompt">提示确认（防覆盖保护）</option><option value="overwrite">直接覆盖远端文件</option><option value="skip">跳过并保留本机副本</option><option value="rename">自动重命名远端副本</option></select></label>
+          <button id="manage-known-hosts" type="button" class="settings-inline-button">管理已知主机指纹</button>
+        </fieldset>
+        <fieldset><legend>启动与连接</legend>
+          <div class="settings-check-grid">
+            <label class="setting-check"><input id="setting-restore-sessions" type="checkbox"> 启动时恢复上次打开的终端标签</label>
+            <label class="setting-check"><input id="setting-session-logging" type="checkbox"> 记录终端会话日志（写入本地文件）</label>
+          </div>
+          <div class="settings-compact-grid">
+            <label>SSH 保活间隔<span class="setting-input-unit"><input id="setting-keepalive" type="number" min="0" max="3600" step="1"><em>秒（0 为关闭）</em></span></label>
+            <label class="setting-check"><input id="setting-auto-reconnect" type="checkbox"> 断线后自动重新连接</label>
+            <label>自动重连次数<input id="setting-reconnect-attempts" type="number" min="0" max="20" step="1"></label>
+            <label>默认本地 Shell<select id="setting-default-local-shell">
+              <option value="powershell">Windows PowerShell</option>
+              <option value="pwsh">PowerShell 7 (pwsh)</option>
+              <option value="cmd">命令提示符 (CMD)</option>
+              <option value="wsl">WSL (Linux)</option>
+              <option value="gitbash">Git Bash</option>
+            </select></label>
+            <label>本地初始目录<input id="setting-local-working-dir" placeholder="留空为用户主目录"></label>
+            <label>关闭主窗口时<select id="setting-close-behavior">
+              <option value="ask">每次询问</option>
+              <option value="tray">最小化到托盘（后台继续运行）</option>
+              <option value="exit">直接退出</option>
+            </select></label>
+          </div>
+        </fieldset>
+        <fieldset><legend>监控告警</legend>
+          <label class="setting-check"><input id="setting-alert-enabled" type="checkbox"> 启用监控告警（超过阈值时通知）</label>
+          <div class="settings-compact-grid">
+            <label>CPU 阈值<span class="setting-input-unit"><input id="setting-alert-cpu" type="number" min="1" max="100" step="1"><em>%</em></span></label>
+            <label>内存阈值<span class="setting-input-unit"><input id="setting-alert-memory" type="number" min="1" max="100" step="1"><em>%</em></span></label>
+            <label>磁盘阈值<span class="setting-input-unit"><input id="setting-alert-disk" type="number" min="1" max="100" step="1"><em>%</em></span></label>
+          </div>
+        </fieldset>
+        <fieldset><legend>日志</legend>
+          <label class="setting-check"><input id="setting-log-crash" type="checkbox" checked disabled> 崩溃时自动写入日志文件（始终开启）</label>
+          <button id="open-log-directory" type="button" class="settings-inline-button">打开日志目录</button>
+          <small>终端会话日志与崩溃日志保存在该目录，便于排查问题。</small>
+        </fieldset>
+        <fieldset class="terminal-appearance-settings"><legend>终端外观</legend>
+          <div class="terminal-appearance-grid">
+            <label>预设配色主题<select id="setting-terminal-theme-preset">
+              <option value="custom">跟随全局主题（自动协调）</option>
+              <optgroup label="深色预设">
+                <option value="one-dark">One Dark</option>
+                <option value="dracula">Dracula</option>
+                <option value="nord">Nord</option>
+                <option value="monokai">Monokai Pro</option>
+                <option value="solarized-dark">Solarized Dark</option>
+                <option value="catppuccin-mocha">Catppuccin Mocha</option>
+                <option value="github-dark">GitHub Dark</option>
+              </optgroup>
+              <optgroup label="浅色预设">
+                <option value="github-light">GitHub Light (浅色)</option>
+                <option value="one-light">One Light (浅色)</option>
+                <option value="solarized-light">Solarized Light (浅色)</option>
+              </optgroup>
+            </select></label>
+            <label>终端字体大小<span class="setting-input-unit"><input id="setting-font-size" type="number" min="8" max="32" step="1"><em>pt</em></span></label>
+            <label>终端字体<select id="setting-font-family" aria-label="终端字体"></select></label>
+            <label>最大历史行数<input id="setting-scrollback" type="number" min="100" max="50000" step="100"></label>
+            <label>终端背景色<input id="setting-terminal-background" type="color"></label>
+            <label>终端前景色<input id="setting-terminal-foreground" type="color"></label>
+          </div>
+          <div class="terminal-settings-preview-wrap">
+            <span>预览</span>
+            <pre id="terminal-settings-preview" class="terminal-settings-preview"><span class="preview-title">MasterTerm terminal preview</span>
+<span class="preview-prompt">master@host</span>:<span class="preview-path">~/workspace</span>$ <span class="preview-command">git status</span>
+<span class="preview-success">✓ connected · service running</span>
+<span class="preview-warning">⚠ warning: configuration changed</span>
+<span class="preview-error">✗ error: permission denied</span>  <span class="preview-ip">192.168.1.100</span>
+普通文本 中文 English 0O1lIi ┃</pre>
+          </div>
+        </fieldset>
+        <fieldset><legend>终端行为</legend>
+          <div class="settings-compact-grid">
+            <label>历史命令数量<input id="setting-history-limit" type="number" min="0" max="5000" step="10"></label>
+            <label>建议显示条数<input id="setting-completion-limit" type="number" min="1" max="50" step="1"></label>
+            <label>历史时间范围<span class="setting-input-unit"><input id="setting-history-days" type="number" min="0" max="3650" step="1"><em>天（0 为不限）</em></span></label>
+            <label>终端光标形状<select id="setting-cursor-style"><option value="block">块状</option><option value="bar">竖线</option><option value="underline">下划线</option></select></label>
+          </div>
+          <div class="settings-check-grid">
+            <label class="setting-check"><input id="setting-read-bash" type="checkbox"> 读取 Bash 历史（.bash_history）</label>
+            <label class="setting-check"><input id="setting-read-zsh" type="checkbox"> 读取 zsh 历史（.zsh_history）</label>
+            <label class="setting-check"><input id="setting-history-deduplicate" type="checkbox"> 去除重复历史命令</label>
+            <label class="setting-check"><input id="setting-copy-on-select" type="checkbox"> 选中终端文字后自动复制</label>
+            <label class="setting-check"><input id="setting-cursor-blink" type="checkbox"> 启用终端光标闪烁</label>
+          </div>
+        </fieldset>
+        <fieldset><legend>连接卡片</legend>
+          <div class="settings-compact-grid">
+            <label>SSH 标签颜色<input id="setting-connection-color-ssh" type="color"></label>
+            <label>RDP 标签颜色<input id="setting-connection-color-rdp" type="color"></label>
+            <label>串口标签颜色<input id="setting-connection-color-serial" type="color"></label>
+          </div>
+          <button id="settings-reset-connection-colors" type="button" class="settings-inline-button">恢复默认标签颜色</button>
+          <small>新连接默认按类型显示标签；已有自定义标签仍会保留。</small>
+        </fieldset>
+        <fieldset><legend>更新</legend>
+          <div class="cloud-sync-actions">
+            <button id="check-update-now" type="button" class="settings-inline-button">立即检查更新</button>
+            <span id="update-check-status" class="cloud-sync-status"></span>
+          </div>
+          <small>当前版本：<span id="current-version-label">—</span></small>
+          <small>启动时自动检查更新（更新源已内置）；发现新版本后可下载并自动安装。</small>
+        </fieldset>
+      </div>
+      <div class="dialog-actions"><span id="settings-status"></span><button id="settings-reset" type="button">恢复默认</button><button id="settings-cancel" type="button">取消</button><button class="primary" type="submit">保存</button></div>
+    </form>
+  </dialog>
+  <dialog id="remote-preview-dialog" class="remote-preview-dialog">
+    <div class="dialog-title">
+      <strong>远程文件预览</strong>
+      <button id="remote-preview-close" type="button" aria-label="关闭">×</button>
+    </div>
+    <div id="remote-preview-name" class="remote-preview-name"></div>
+    <pre id="remote-preview-content" class="remote-preview-content"></pre>
+    <div class="dialog-actions">
+      <span id="remote-preview-status"></span>
+      <button id="remote-preview-close-action" type="button">关闭</button>
+    </div>
+  </dialog>
+  <dialog id="tunnel-dialog" class="tunnel-dialog">
+    <div class="dialog-title"><strong>端口转发</strong><button id="tunnel-dialog-close" type="button" aria-label="关闭">×</button></div>
+    <div class="tunnel-body">
+      <div class="tunnel-form">
+        <div class="tunnel-form-title"><strong>新建转发</strong></div>
+        <label>SSH 会话<select id="tunnel-session"></select></label>
+        <label>转发模式<select id="tunnel-mode">
+          <option value="local">本地转发：本地监听 → 经服务器访问目标</option>
+          <option value="remote">远程转发：服务器监听 → 转发到本地目标</option>
+        </select></label>
+        <label>监听端口<input id="tunnel-listen-port" type="number" min="0" max="65535" placeholder="例如 8080（0 表示自动分配）"></label>
+        <label>目标主机<input id="tunnel-target-host" placeholder="例如 127.0.0.1 或 db.example.com"></label>
+        <label>目标端口<input id="tunnel-target-port" type="number" min="1" max="65535"></label>
+        <div class="tunnel-form-actions">
+          <button id="tunnel-create" class="primary" type="button">创建转发</button>
+          <span id="tunnel-form-status"></span>
+        </div>
+        <label class="setting-check tunnel-save-config">
+          <input id="tunnel-save-config" type="checkbox">
+          保存为自动创建（该连接下次登录时自动建立）
+        </label>
+      </div>
+      <div class="tunnel-list">
+        <div class="tunnel-list-title"><strong>转发列表</strong><button id="tunnel-refresh" type="button">刷新</button></div>
+        <div id="tunnel-list" class="tunnel-list-content"></div>
+      </div>
+    </div>
+    <div class="dialog-actions"><button id="tunnel-dialog-close-action" type="button">关闭</button></div>
+  </dialog>
+  <div id="server-context-menu" class="context-menu" role="menu" hidden>
+    <button type="button" data-action="connect">连接</button>
+    <div class="context-menu-separator"></div>
+    <button type="button" data-action="edit">编辑</button>
+    <button type="button" data-action="copy">复制</button>
+    <div class="context-menu-separator"></div>
+    <button type="button" data-action="move-up">上移</button>
+    <button type="button" data-action="move-down">下移</button>
+    <div class="context-menu-separator"></div>
+    <button type="button" data-action="batch-workspace">批量设置工作区</button>
+    <button type="button" data-action="batch-color">批量设置颜色</button>
+    <button type="button" data-action="batch-icon">批量设置图标</button>
+    <button type="button" data-action="batch-delete" class="danger">批量删除</button>
+    <button type="button" data-action="delete" class="danger">删除</button>
+  </div>
+  <div id="server-view-menu" class="context-menu server-view-menu" role="menu" hidden>
+    <label>排序<select id="server-sort-mode">
+      <option value="name-asc">名称（A-Z）</option>
+      <option value="name-desc">名称（Z-A）</option>
+      <option value="address-asc">地址</option>
+      <option value="recent">最近连接</option>
+      <option value="manual">手动顺序</option>
+    </select></label>
+    <label>分组<select id="server-group-mode">
+      <option value="type">连接类型</option>
+      <option value="workspace">工作区</option>
+      <option value="workspace-type">工作区 / 类型</option>
+      <option value="none">不分组</option>
+    </select></label>
+  </div>
+  <div id="terminal-context-menu" class="context-menu" role="menu" hidden>
+    <button type="button" data-action="reconnect">重新连接</button>
+    <button type="button" data-action="duplicate">复制标签页</button>
+    <button type="button" data-action="rename-tab">重命名标签页…</button>
+    <button type="button" data-action="fullscreen" hidden>全屏显示</button>
+    <button type="button" data-action="diagnostics">终端诊断</button>
+    <button type="button" data-action="close">关闭当前</button>
+    <button type="button" data-action="close-others">关闭其它</button>
+    <button type="button" data-action="close-all">关闭全部</button>
+    <div class="context-menu-separator"></div>
+    <button type="button" data-action="move-left">左移</button>
+    <button type="button" data-action="move-right">右移</button>
+    <div class="context-menu-separator"></div>
+    <button type="button" data-action="split-vertical">垂直分屏（左右）…</button>
+    <button type="button" data-action="split-horizontal">水平分屏（上下）…</button>
+    <button type="button" data-action="split-close">关闭分屏</button>
+    <div class="context-menu-separator"></div>
+    <button type="button" data-action="batch-command">批量执行命令…</button>
+  </div>
+  <div id="terminal-tabs-context-menu" class="context-menu" role="menu" hidden>
+    <button type="button" data-action="new-local">打开默认本地终端</button>
+    <button type="button" data-action="new-local-pwsh">PowerShell 7</button>
+    <button type="button" data-action="new-local-powershell">Windows PowerShell</button>
+    <button type="button" data-action="new-local-cmd">命令提示符 (CMD)</button>
+    <button type="button" data-action="new-local-wsl">WSL (Linux)</button>
+    <button type="button" data-action="new-local-gitbash">Git Bash</button>
+    <div class="context-menu-separator"></div>
+    <button type="button" data-action="new-ssh">打开 SSH 终端…</button>
+    <div class="context-menu-separator"></div>
+    <button type="button" data-action="close-all">关闭全部</button>
+    <button type="button" data-action="split-close">关闭分屏</button>
+    <button type="button" data-action="batch-command">批量执行命令…</button>
+    <div class="context-menu-separator"></div>
+    <button type="button" data-action="sort-name">标签按名称排序</button>
+    <button type="button" data-action="sort-type">标签按连接类型排序</button>
+  </div>
+  <div id="split-nav-context-menu" class="context-menu" role="menu" hidden>
+    <button type="button" data-action="split-activate">切回终端分屏</button>
+    <div class="context-menu-separator"></div>
+    <button type="button" data-action="split-vertical">切换为垂直分屏（左右）</button>
+    <button type="button" data-action="split-horizontal">切换为水平分屏（上下）</button>
+    <button type="button" data-action="split-close">关闭分屏</button>
+    <div class="context-menu-separator"></div>
+    <button type="button" data-action="batch-command">批量执行命令…</button>
+    <button type="button" data-action="close-all" class="danger">关闭全部终端</button>
+  </div>
+  <div id="terminal-output-context-menu" class="context-menu" role="menu" hidden>
+    <button type="button" data-action="copy">复制</button>
+    <button type="button" data-action="paste">粘贴</button>
+  </div>
+  <div id="theme-menu" class="context-menu theme-menu" role="menu" hidden>
+    <div class="theme-menu-item-wrap" data-category="dark">
+      <button type="button" class="theme-menu-cat-btn" data-theme="dark">
+        <span>🌙 深色主题</span>
+        <span class="theme-menu-cat-arrow">▶</span>
+      </button>
+      <div class="theme-submenu" role="menu">
+        <button type="button" class="theme-preset-btn" data-theme="dark" data-preset="custom">
+          <span class="theme-color-dot" style="background: #0b1220;"></span>
+          <span>默认深色</span>
+        </button>
+        <button type="button" class="theme-preset-btn" data-theme="dark" data-preset="one-dark">
+          <span class="theme-color-dot" style="background: #282c34;"></span>
+          <span>One Dark</span>
+        </button>
+        <button type="button" class="theme-preset-btn" data-theme="dark" data-preset="dracula">
+          <span class="theme-color-dot" style="background: #282a36;"></span>
+          <span>Dracula</span>
+        </button>
+        <button type="button" class="theme-preset-btn" data-theme="dark" data-preset="nord">
+          <span class="theme-color-dot" style="background: #2e3440;"></span>
+          <span>Nord</span>
+        </button>
+        <button type="button" class="theme-preset-btn" data-theme="dark" data-preset="monokai">
+          <span class="theme-color-dot" style="background: #2d2a2e;"></span>
+          <span>Monokai Pro</span>
+        </button>
+        <button type="button" class="theme-preset-btn" data-theme="dark" data-preset="solarized-dark">
+          <span class="theme-color-dot" style="background: #002b36;"></span>
+          <span>Solarized Dark</span>
+        </button>
+        <button type="button" class="theme-preset-btn" data-theme="dark" data-preset="catppuccin-mocha">
+          <span class="theme-color-dot" style="background: #1e1e2e;"></span>
+          <span>Catppuccin Mocha</span>
+        </button>
+        <button type="button" class="theme-preset-btn" data-theme="dark" data-preset="github-dark">
+          <span class="theme-color-dot" style="background: #0d1117;"></span>
+          <span>GitHub Dark</span>
+        </button>
+      </div>
+    </div>
+    <div class="theme-menu-item-wrap" data-category="light">
+      <button type="button" class="theme-menu-cat-btn" data-theme="light">
+        <span>☀️ 浅色主题</span>
+        <span class="theme-menu-cat-arrow">▶</span>
+      </button>
+      <div class="theme-submenu" role="menu">
+        <button type="button" class="theme-preset-btn" data-theme="light" data-preset="custom">
+          <span class="theme-color-dot" style="background: #ffffff; border-color: #cbd5e1;"></span>
+          <span>默认浅色</span>
+        </button>
+        <button type="button" class="theme-preset-btn" data-theme="light" data-preset="github-light">
+          <span class="theme-color-dot" style="background: #ffffff; border-color: #cbd5e1;"></span>
+          <span>GitHub Light</span>
+        </button>
+        <button type="button" class="theme-preset-btn" data-theme="light" data-preset="one-light">
+          <span class="theme-color-dot" style="background: #fafafa; border-color: #cbd5e1;"></span>
+          <span>One Light</span>
+        </button>
+        <button type="button" class="theme-preset-btn" data-theme="light" data-preset="solarized-light">
+          <span class="theme-color-dot" style="background: #fdf6e3; border-color: #cbd5e1;"></span>
+          <span>Solarized Light</span>
+        </button>
+      </div>
+    </div>
+    <div class="theme-menu-item-wrap" data-category="blue">
+      <button type="button" class="theme-menu-cat-btn" data-theme="blue">
+        <span>🌊 蓝色主题</span>
+        <span class="theme-menu-cat-arrow">▶</span>
+      </button>
+      <div class="theme-submenu" role="menu">
+        <button type="button" class="theme-preset-btn" data-theme="blue" data-preset="custom">
+          <span class="theme-color-dot" style="background: #061b30;"></span>
+          <span>经典海蓝</span>
+        </button>
+      </div>
+    </div>
+  </div>
+  <div id="sftp-context-menu" class="context-menu" role="menu" hidden>
+    <button type="button" data-action="upload">上传到当前目录</button>
+    <button type="button" data-action="cd-terminal">在当前终端进入此目录 (cd)</button>
+    <div class="context-menu-separator"></div>
+    <button type="button" data-action="new-folder">新建文件夹</button>
+    <button type="button" data-action="new-file">新建文件</button>
+    <button type="button" data-action="preview">预览内容</button>
+    <button type="button" data-action="open">打开</button>
+    <button type="button" data-action="open-with">选择程序并设为默认…</button>
+    <button type="button" data-action="open-default">使用 Windows应用打开</button>
+    <button type="button" data-action="download">下载</button>
+    <button type="button" data-action="copy-path">复制远程路径</button>
+    <button type="button" data-action="favorite">收藏目录</button>
+    <div class="context-menu-separator"></div>
+    <button type="button" data-action="copy-to">复制到…</button>
+    <button type="button" data-action="move-to">移动到…</button>
+    <button type="button" data-action="rename">重命名</button>
+    <button type="button" data-action="chmod">修改权限…</button>
+    <button type="button" data-action="properties">属性</button>
+    <button type="button" data-action="delete" class="danger">删除</button>
+  </div>
+  <div id="workspace-context-menu" class="context-menu" role="menu" hidden>
+    <button type="button" data-action="create-ssh">新建 SSH 连接</button>
+    <button type="button" data-action="create-rdp">新建 RDP 连接</button>
+    <button type="button" data-action="create-serial">新建串口连接</button>
+    <div class="context-menu-separator"></div>
+    <button type="button" data-action="create">新建工作区</button>
+    <button type="button" data-action="rename">重命名工作区</button>
+    <button type="button" data-action="delete" class="danger">删除工作区</button>
+    <div class="context-menu-separator"></div>
+    <button type="button" data-action="import-config">导入连接配置…</button>
+    <button type="button" data-action="export-config">导出连接配置…</button>
+    <button type="button" data-action="restore-config">恢复配置备份…</button>
+  </div>
+  <div id="local-context-menu" class="context-menu" role="menu" hidden>
+    <button type="button" data-action="open">打开</button>
+    <button type="button" data-action="upload">上传到当前远程目录</button>
+    <button type="button" data-action="sync">增量同步到远程（跳过相同文件）</button>
+    <button type="button" data-action="new-folder">新建文件夹</button>
+    <button type="button" data-action="new-file">新建文件</button>
+    <button type="button" data-action="refresh">刷新</button>
+    <button type="button" data-action="favorite">收藏目录</button>
+    <div class="context-menu-separator"></div>
+    <button type="button" data-action="rename">重命名</button>
+    <button type="button" data-action="delete" class="danger">删除</button>
+  </div>
+  <div id="sftp-favorites-menu" class="context-menu favorites-menu" role="menu" hidden>
+    <div class="favorites-menu-title">收藏目录</div>
+    <div id="sftp-favorites-list" class="favorites-list"></div>
+  </div>
+  <div id="local-favorites-menu" class="context-menu favorites-menu" role="menu" hidden>
+    <div class="favorites-menu-title">本机收藏目录</div>
+    <div id="local-favorites-list" class="favorites-list"></div>
+  </div>
+  <dialog id="action-dialog" class="action-dialog">
+    <form id="action-dialog-form">
+      <div class="dialog-title">
+        <strong id="action-dialog-title"></strong>
+        <button id="action-dialog-close" type="button" aria-label="关闭">×</button>
+      </div>
+      <div class="action-dialog-content">
+        <div id="action-dialog-message"></div>
+        <input id="action-dialog-input" autocomplete="off">
+        <select id="action-dialog-select" hidden></select>
+      </div>
+      <div id="action-dialog-actions" class="dialog-actions"></div>
+    </form>
+  </dialog>
+  <dialog id="terminal-diagnostics-dialog" class="action-dialog terminal-diagnostics-dialog">
+    <div class="dialog-title"><strong>终端诊断</strong><button id="terminal-diagnostics-close" type="button" aria-label="关闭">×</button></div>
+    <div id="terminal-diagnostics-content" class="terminal-diagnostics-content"></div>
+    <div class="dialog-actions"><button id="terminal-diagnostics-close-action" type="button">关闭</button></div>
+  </dialog>
+  <dialog id="quick-switcher-dialog" class="action-dialog quick-switcher-dialog">
+    <div class="quick-switcher-container">
+      <div class="quick-switcher-input-wrap">
+        <svg class="quick-switcher-search-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input id="quick-switcher-input" type="text" placeholder="搜索连接、打开标签页、执行命令... (支持拼音/模糊匹配)" autocomplete="off">
+        <kbd class="quick-switcher-esc-badge">ESC</kbd>
+      </div>
+      <div id="quick-switcher-results" class="quick-switcher-results"></div>
+      <div class="quick-switcher-footer">
+        <span><kbd>↑</kbd><kbd>↓</kbd> 导航</span>
+        <span><kbd>Enter</kbd> 确认</span>
+        <span><kbd>Esc</kbd> 关闭</span>
+      </div>
+    </div>
+  </dialog>
+  <dialog id="shortcuts-dialog" class="action-dialog shortcuts-dialog">
+    <div class="shortcuts-container">
+      <div class="shortcuts-header">
+        <div class="shortcuts-header-title">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <strong>快捷键速查中心</strong>
+        </div>
+        <kbd class="shortcuts-esc-badge" id="shortcuts-close-badge">ESC</kbd>
+      </div>
+      <div class="shortcuts-content">
+        <div class="shortcuts-group">
+          <h4>全局导航</h4>
+          <div class="shortcut-row"><span class="shortcut-desc">快速跳转连接与会话</span><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>P</kbd> / <kbd>K</kbd></span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">快捷键速查中心</span><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>/</kbd></span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">多终端按键实时广播</span><span class="shortcut-keys"><kbd>Alt</kbd>+<kbd>B</kbd></span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">全屏 / 退出全屏</span><span class="shortcut-keys"><kbd>F11</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd></span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">偏好设置</span><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>,</kbd></span></div>
+        </div>
+        <div class="shortcuts-group">
+          <h4>标签页与分屏</h4>
+          <div class="shortcut-row"><span class="shortcut-desc">下一个标签页</span><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>Tab</kbd></span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">上一个标签页</span><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Tab</kbd></span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">分屏子窗口放大 / 还原</span><span class="shortcut-keys"><kbd>Alt</kbd>+<kbd>M</kbd></span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">关闭当前标签页</span><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>W</kbd></span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">快速切换标签 1 ~ 9</span><span class="shortcut-keys"><kbd>Alt</kbd>+<kbd>1..9</kbd></span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">复制 / 重命名标签</span><span class="shortcut-keys">标签栏右键</span></div>
+        </div>
+        <div class="shortcuts-group">
+          <h4>终端交互</h4>
+          <div class="shortcut-row"><span class="shortcut-desc">终端关键词实时搜索</span><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>F</kbd></span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">选中文字自动复制</span><span class="shortcut-keys">划选即复制</span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">复制 / 发送中断 (SIGINT)</span><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>C</kbd></span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">粘贴剪贴板文本</span><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>V</kbd></span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">清屏并重置视口</span><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>L</kbd></span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">命令行换行 (CSI-u)</span><span class="shortcut-keys"><kbd>Shift</kbd>+<kbd>Enter</kbd></span></div>
+        </div>
+        <div class="shortcuts-group">
+          <h4>SFTP 与效率</h4>
+          <div class="shortcut-row"><span class="shortcut-desc">文件列表拼音首字母跳转</span><span class="shortcut-keys">键盘键入字母</span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">当前目录文件实时筛选</span><span class="shortcut-keys">工具栏筛选框</span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">当前终端进入此目录</span><span class="shortcut-keys">工具栏 <kbd>cd</kbd> / 右键</span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">本地/远端双列浏览</span><span class="shortcut-keys">SFTP 本地按钮</span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">新建多类型本地 Shell</span><span class="shortcut-keys">标签栏 <kbd>+</kbd> 菜单</span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">快速跳转工作区</span><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>P</kbd> 搜工作区</span></div>
+        </div>
+        <div class="shortcuts-group">
+          <h4>RDP 远程桌面</h4>
+          <div class="shortcut-row"><span class="shortcut-desc">全屏 / 退出全屏</span><span class="shortcut-keys"><kbd>F11</kbd> / 顶部控制栏</span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">注入 Ctrl+Alt+Del</span><span class="shortcut-keys">顶部系统按键菜单</span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">注入 Win 徽标 / 任务管理</span><span class="shortcut-keys">顶部系统按键菜单</span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">掉线自动重连</span><span class="shortcut-keys">5秒倒计时自动重试</span></div>
+        </div>
+      </div>
+      <div class="shortcuts-footer">
+        <span>按 <kbd>Esc</kbd> 或点击外部任意区域退出</span>
+      </div>
+    </div>
+  </dialog>
+  <dialog id="about-dialog" class="action-dialog about-dialog" aria-labelledby="about-dialog-title">
+    <div class="about-container">
+      <div class="about-header">
+        <div class="about-header-title" id="about-dialog-title">
+          <span class="about-header-icon">ℹ️</span>
+          <strong>关于 MasterTerm</strong>
+        </div>
+        <kbd class="shortcuts-esc-badge" id="about-dialog-close">ESC</kbd>
+      </div>
+      <div class="about-content">
+        <div class="about-brand-row">
+          <div class="about-app-icon">🖥️</div>
+          <div class="about-brand-text">
+            <div class="about-app-name">MasterTerm <span id="about-dialog-version-badge" class="about-version-badge">v0.1.129</span></div>
+            <div class="about-app-subtitle">面向 Windows 的现代化全能桌面终端工作台</div>
+          </div>
+        </div>
+        <div class="about-section about-intro-section">
+          <p class="about-intro-text">
+            MasterTerm 深度集成 SSH、SFTP 文件传输、串口通信、本地终端 (ConPTY) 以及高性能 RDP 远程桌面连接。依托纯原生 Win32 + WebView2 架构打造，兼具毫秒级极速响应与现代化 UI 交互，支持多标签分屏、命令智能补全、传输中心与配置云同步。
+          </p>
+          <div class="about-tags-grid">
+            <span class="about-feature-tag">⚡ SSH / 串口终端</span>
+            <span class="about-feature-tag">📂 SFTP 高速传输</span>
+            <span class="about-feature-tag">🖥️ RDP 远程桌面</span>
+            <span class="about-feature-tag">💻 ConPTY 本地终端</span>
+            <span class="about-feature-tag">⌨️ 智能分段命令补全</span>
+            <span class="about-feature-tag">☁️ 配置云同步与备份</span>
+          </div>
+        </div>
+        <div class="about-section about-portal-section">
+          <div class="about-portal-header">
+            <span class="about-portal-icon">🚀</span>
+            <strong>官方项目与发布平台</strong>
+          </div>
+          <p class="about-portal-desc">
+            作者项目发布中心（MasterTerm 官方版本发布与更新分发平台），提供最新稳定版安装包、绿色便携包下载，以及更新日志发布与服务支持：
+          </p>
+          <div class="about-portal-link-box">
+            <a href="https://master.dapang.wang" target="_blank" class="about-portal-url" id="about-portal-url">https://master.dapang.wang</a>
+            <button type="button" class="about-portal-open-btn" id="about-open-portal-btn">打开发布平台 ↗</button>
+          </div>
+        </div>
+        <div class="about-copyright-row">
+          <span>© 2026 MasterTerm · DAPANG.WANG All Rights Reserved.</span>
+        </div>
+      </div>
+      <div class="about-footer">
+        <button type="button" class="primary" id="about-dialog-ok-btn">确定</button>
+      </div>
+    </div>
+  </dialog>
+  <dialog id="update-dialog" class="update-dialog" aria-labelledby="update-dialog-title">
+    <div class="update-container">
+      <div class="update-header">
+        <div class="update-header-title" id="update-dialog-title">
+          <span class="update-header-icon">🔄</span>
+          <strong>检查新版本</strong>
+        </div>
+        <kbd class="shortcuts-esc-badge" id="update-dialog-close">ESC</kbd>
+      </div>
+      <div class="update-content">
+        <div class="update-status-row">
+          <div id="update-dialog-status-icon" class="update-status-icon">🔍</div>
+          <div class="update-status-info">
+            <div id="update-dialog-status-title" class="update-dialog-status-title">正在连接更新服务器…</div>
+            <div class="update-version-row">
+              <span>当前版本：<strong id="update-dialog-current-ver">—</strong></span>
+              <span id="update-dialog-latest-wrap" hidden>最新版本：<strong id="update-dialog-latest-ver">—</strong></span>
+            </div>
+          </div>
+        </div>
+        <div id="update-dialog-changelog-wrap" class="update-dialog-changelog-wrap" hidden>
+          <div class="update-changelog-title">版本更新说明：</div>
+          <pre id="update-dialog-changelog" class="update-dialog-changelog"></pre>
+        </div>
+        <div id="update-dialog-progress-wrap" class="update-download-progress-wrap" hidden>
+          <div class="update-progress-bar-bg">
+            <div id="update-dialog-progress-fill" class="update-progress-bar-fill" style="width: 0%;"></div>
+          </div>
+          <div id="update-dialog-progress-text" class="update-progress-text">正在下载更新包 0%…</div>
+        </div>
+      </div>
+      <div class="update-footer">
+        <button type="button" id="update-dialog-recheck-btn">重新检查</button>
+        <div class="update-footer-spacer"></div>
+        <button type="button" id="update-dialog-close-btn">关闭</button>
+        <button type="button" class="primary" id="update-dialog-action-btn" hidden>立即更新</button>
+      </div>
+    </div>
+  </dialog>
+  <dialog id="command-macro-dialog" class="action-dialog command-macro-dialog">
+    <div class="dialog-title">
+      <strong>命令参数宏填写</strong>
+      <button id="command-macro-close" class="dialog-close-btn" type="button" title="关闭 (Esc)">×</button>
+    </div>
+    <div class="command-macro-body">
+      <div class="command-macro-desc">检测到命令模板包含可变参数宏，请填写后发送执行：</div>
+      <div id="command-macro-fields" class="command-macro-fields"></div>
+      <div class="command-macro-preview-wrap">
+        <label>实时执行预览：</label>
+        <pre id="command-macro-preview" class="command-macro-preview"></pre>
+      </div>
+    </div>
+    <div class="dialog-actions">
+      <button id="command-macro-cancel" type="button">取消</button>
+      <button id="command-macro-submit" class="primary" type="button">发送执行</button>
+    </div>
+  </dialog>
+  <div id="rdp-key-menu" class="context-menu rdp-key-menu" hidden>
+    <button type="button" data-rdp-action="cad"><span>Ctrl + Alt + Del</span><kbd>CAD</kbd></button>
+    <button type="button" data-rdp-action="win"><span>Windows 徽标键</span><kbd>Win</kbd></button>
+    <button type="button" data-rdp-action="run"><span>运行 (Win + R)</span><kbd>Run</kbd></button>
+    <button type="button" data-rdp-action="task-manager"><span>任务管理器</span><kbd>TaskMgr</kbd></button>
+    <button type="button" data-rdp-action="explorer"><span>资源管理器</span><kbd>Explorer</kbd></button>
+    <button type="button" data-rdp-action="cmd"><span>命令提示符 (Cmd)</span><kbd>Cmd</kbd></button>
+    <button type="button" data-rdp-action="print-screen"><span>截取屏幕 (PrintScreen)</span><kbd>PrtScn</kbd></button>
+  </div>
+  <style>
+    .sftp-table tbody tr { cursor: default; }
+    .sftp-table tbody tr.selected {
+      background: rgba(59, 130, 246, .2);
+      outline: 1px solid rgba(96, 165, 250, .45);
+      outline-offset: -1px;
+    }
+  </style>
+  <div id="toast-container" aria-live="polite" aria-atomic="true"></div>
+  <script src="app.js" defer></script>
+</body>
+</html>

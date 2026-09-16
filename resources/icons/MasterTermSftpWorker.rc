@@ -1,0 +1,4 @@
+// The worker also touches local paths, so it needs the same Windows long-path
+// declaration as the main executable.
+#define RT_MANIFEST 24
+1 RT_MANIFEST "MasterTerm.manifest"

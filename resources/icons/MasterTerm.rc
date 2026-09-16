@@ -1,0 +1,24 @@
+// Compiled into MasterTerm.exe so Windows uses the application icon in the
+// title bar, taskbar, Alt+Tab switcher, Explorer, and native startup screen.
+#define IDI_MASTERTERM_ICON 101
+#define IDB_MASTERTERM_SPLASH_LOGO 102
+#define IDR_WEB_INDEX 103
+#define IDR_WEB_APP_CSS 104
+#define IDR_WEB_APP_JS 105
+#define IDR_WEB_XTERM_LICENSE 106
+#define IDR_WEB_XTERM_CSS 107
+#define IDR_WEB_XTERM_JS 108
+#define IDR_WEB_XTERM_FIT_JS 109
+#define IDR_WEB_XTERM_FIT_LICENSE 110
+#define RT_MANIFEST 24
+IDI_MASTERTERM_ICON ICON "MasterTerm.ico"
+1 RT_MANIFEST "MasterTerm.manifest"
+IDB_MASTERTERM_SPLASH_LOGO RCDATA "MasterTerm_MasterCore_Logo.png"
+IDR_WEB_INDEX RCDATA "..\\web\\index.html"
+IDR_WEB_APP_CSS RCDATA "..\\web\\app.css"
+IDR_WEB_APP_JS RCDATA "..\\web\\app.js"
+IDR_WEB_XTERM_LICENSE RCDATA "..\\web\\vendor\\xterm\\LICENSE"
+IDR_WEB_XTERM_CSS RCDATA "..\\web\\vendor\\xterm\\xterm.css"
+IDR_WEB_XTERM_JS RCDATA "..\\web\\vendor\\xterm\\xterm.js"
+IDR_WEB_XTERM_FIT_JS RCDATA "..\\web\\vendor\\xterm-fit\\addon-fit.js"
+IDR_WEB_XTERM_FIT_LICENSE RCDATA "..\\web\\vendor\\xterm-fit\\LICENSE"

@@ -1,0 +1,12 @@
+[Unit]
+Description=MasterTerm cloud sync
+After=network.target
+
+[Service]
+WorkingDirectory=/opt/masterterm-cloud
+ExecStart=/usr/bin/python3 /opt/masterterm-cloud/cloud-sync.py --port 8081 --prefix /cloud-sync
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none" role="img" aria-labelledby="title desc">
+  <title id="title">MasterTerm Master Core logo</title>
+  <desc id="desc">A balanced crown-inspired M monogram at the center of a three-node connection ring.</desc>
+  <defs>
+    <linearGradient id="ring" x1="82" y1="73" x2="430" y2="439" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#557DFF"/>
+      <stop offset="0.52" stop-color="#278FFF"/>
+      <stop offset="1" stop-color="#25D2D8"/>
+    </linearGradient>
+    <linearGradient id="core" x1="145" y1="127" x2="373" y2="393" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#316FEA"/>
+      <stop offset="0.53" stop-color="#1558C5"/>
+      <stop offset="1" stop-color="#073B88"/>
+    </linearGradient>
+    <linearGradient id="coreEdge" x1="132" y1="124" x2="389" y2="394" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#78A8FF"/>
+      <stop offset="0.54" stop-color="#338CFF"/>
+      <stop offset="1" stop-color="#29D5DD"/>
+    </linearGradient>
+    <linearGradient id="mark" x1="171" y1="159" x2="341" y2="348" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="0.66" stop-color="#E2EEFF"/>
+      <stop offset="1" stop-color="#B9F0F3"/>
+    </linearGradient>
+    <linearGradient id="crown" x1="190" y1="143" x2="322" y2="208" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#73A8FF"/>
+      <stop offset="1" stop-color="#55E5E2"/>
+    </linearGradient>
+    <radialGradient id="light" cx="0" cy="0" r="1" gradientTransform="translate(207 165) rotate(51) scale(270)">
+      <stop stop-color="#8BB0FF" stop-opacity="0.24"/>
+      <stop offset="0.7" stop-color="#2D6ED8" stop-opacity="0.04"/>
+      <stop offset="1" stop-color="#052A65" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="shadow" x="82" y="83" width="348" height="365" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="16" stdDeviation="15" flood-color="#06152D" flood-opacity="0.28"/>
+    </filter>
+  </defs>
+
+  <!-- Three mathematically equal 96-degree arcs, separated around three protocol nodes. -->
+  <g stroke="url(#ring)" stroke-width="13" stroke-linecap="round">
+    <path d="M299 53.5A207 207 0 0 1 452.8 320"/>
+    <path d="M394.5 409.8A207 207 0 0 1 117.5 409.8"/>
+    <path d="M59.2 320A207 207 0 0 1 213 53.5"/>
+  </g>
+  <circle cx="256" cy="49" r="12" fill="#63E0E4"/>
+  <circle cx="435.3" cy="359.5" r="12" fill="#25CDD8"/>
+  <circle cx="76.7" cy="359.5" r="12" fill="#4D82FF"/>
+
+  <!-- Compact master core with equal clearance from the orbit on every side. -->
+  <g filter="url(#shadow)">
+    <rect x="112" y="112" width="288" height="288" rx="82" fill="url(#core)"/>
+    <rect x="119" y="119" width="274" height="274" rx="75" fill="url(#light)"/>
+    <rect x="118" y="118" width="276" height="276" rx="76" stroke="url(#coreEdge)" stroke-width="6"/>
+  </g>
+
+  <!-- Crown: centered, restrained and visually fused with the M rather than floating above it. -->
+  <path d="M185 198 212 153l44 43 44-43 27 45" stroke="url(#crown)" stroke-width="15" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Master monogram: one continuous, balanced silhouette. -->
+  <path d="M171 340V202c0-14 17-21 27-11l58 63 58-63c10-10 27-3 27 11v138" stroke="url(#mark)" stroke-width="35" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
