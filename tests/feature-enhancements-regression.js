@@ -597,7 +597,7 @@ check('RDP options show explicit defaults, Jump Server has dedicated section & p
         && html.includes('默认 (启用剪贴板同步)')
         && html.includes('默认 (播放到本机)')
         && html.includes('默认 (禁用·保护本机磁盘安全)')
-        && html.includes('默认 (启用·最多重试 3 次)')
+        && html.includes('默认 (禁用·防止多端登录冲突)')
         && html.includes('id="jump-server-fields"')
         && html.includes('id="server-proxy-port"')
         && app.includes('splitProxyJump')

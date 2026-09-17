@@ -483,12 +483,27 @@ public:
         case 3:  // DISPID_LOGINCOMPLETE / OnLoginComplete
             emit(L"connected");
             break;
-        case 4:  // DISPID_DISCONNECTED / OnDisconnected
-            if (const std::wstring code = eventCode(); !code.empty())
-                emit(L"error:远程桌面已断开（错误码 " + code + L"）");
-            else
-                emit(L"disconnected");
+        case 4: { // DISPID_DISCONNECTED / OnDisconnected
+            long reasonCode = 0;
+            bool hasCode = false;
+            if (params && params->cArgs > 0) {
+                const VARIANT &val = params->rgvarg[0];
+                if (val.vt == VT_I4) { reasonCode = val.lVal; hasCode = true; }
+                else if (val.vt == VT_UI4) { reasonCode = static_cast<long>(val.ulVal); hasCode = true; }
+                else if (val.vt == VT_I2) { reasonCode = val.iVal; hasCode = true; }
+                else if (val.vt == VT_UI2) { reasonCode = val.uiVal; hasCode = true; }
+            }
+            if (!hasCode || reasonCode == 1 || reasonCode == 2) {
+                emit(L"disconnected:远程会话已正常断开。");
+            } else if (reasonCode == 3 || reasonCode == 264) {
+                emit(L"conflict:远程桌面已断开：检测到另一处设备已接管此会话（错误码 " + std::to_wstring(reasonCode) + L"），已停止自动重连以避免互相踢下线。");
+            } else if (reasonCode == 3334) {
+                emit(L"logoff:远程会话已注销（错误码 3334）。");
+            } else {
+                emit(L"error:远程桌面已断开（错误码 " + std::to_wstring(reasonCode) + L"）");
+            }
             break;
+        }
         case 5:  // DISPID_ENTERFULLSCREENMODE / OnEnterFullScreenMode
             if (fullscreenHandler && *fullscreenHandler)
                 (*fullscreenHandler)(true);

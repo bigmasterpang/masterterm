@@ -24,6 +24,6 @@ struct RdpConnectionOptions
     int audioRedirectionMode = -1;   // 0 client, 1 none, 2 remote
     int redirectDrives = -1;         // 0/1
     int redirectPrinters = -1;       // 0/1
-    int autoReconnect = -1;          // 0/1
+    int autoReconnect = 0;           // 0: disabled by default (prevents conflict loops)
     int maxReconnectAttempts = 3;
 };

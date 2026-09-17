@@ -324,7 +324,7 @@
     "cursorSettings"
   ]);
   const defaultRdpOptionValue = key => key === "maxReconnectAttempts"
-    ? 3 : key === "useMultimon" ? 1 : -1;
+    ? 3 : key === "useMultimon" ? 1 : key === "autoReconnect" ? 0 : -1;
   const serialPortSelect = document.querySelector("#server-serial-port");
   const serialPortRefreshButton = document.querySelector("#server-serial-refresh");
   const serialPortStatus = document.querySelector("#server-serial-status");
@@ -3143,56 +3143,88 @@
     session.rdpDisconnectNotice.hidden = false;
     session.tab.title = `${session.displayName} · 已断开 · ${reason}`;
 
-    if (!session.closing && !session.manualDisconnect && session.profileIndex >= 0) {
-      const profileIndex = session.profileIndex;
-      const currentAttempts = (rdpAutoReconnectAttemptsByProfile.get(profileIndex) || 0) + 1;
-      rdpAutoReconnectAttemptsByProfile.set(profileIndex, currentAttempts);
+    if (session.rdpAutoReconnectTimer) {
+      clearInterval(session.rdpAutoReconnectTimer);
+      session.rdpAutoReconnectTimer = 0;
+    }
 
-      if (currentAttempts <= 5) {
-        let remainingSeconds = 5;
-        if (session.rdpAutoReconnectTimer) {
+    if (!session.rdpCountdownBadge) {
+      session.rdpCountdownBadge = document.createElement("div");
+      session.rdpCountdownBadge.className = "rdp-reconnect-countdown";
+      const content = session.rdpDisconnectNotice.querySelector(".rdp-disconnect-content");
+      const actions = session.rdpDisconnectNotice.querySelector(".rdp-disconnect-actions");
+      if (content && actions) {
+        content.insertBefore(session.rdpCountdownBadge, actions);
+      }
+    }
+
+    // 1. 冲突判断：当会话是由另一台设备接入、远端注销、本地主动断开、或特定退出码引起时，绝对禁止自动重连
+    const isConflictOrLogoff = (
+      session.closing ||
+      session.manualDisconnect ||
+      reason.includes("另一处设备") ||
+      reason.includes("另一登录会话") ||
+      reason.includes("另一连接") ||
+      reason.includes("接管") ||
+      reason.includes("注销") ||
+      reason.includes("错误码 3") ||
+      reason.includes("错误码 264") ||
+      reason.includes("错误码 3334") ||
+      reason.includes("错误码 1") ||
+      reason.includes("错误码 2")
+    );
+
+    if (isConflictOrLogoff) {
+      if (session.profileIndex >= 0) {
+        rdpAutoReconnectAttemptsByProfile.delete(session.profileIndex);
+      }
+      session.rdpCountdownBadge.hidden = false;
+      session.rdpCountdownBadge.textContent = "已停止自动重连（检测到会话被其它设备接管或已正常退出）。如需重新连接请点击下方“重新连接”。";
+      return;
+    }
+
+    // 2. 检查是否开启了自动重连：服务器单独配置优先，为 -1 或未配置时跟随全局设置
+    const profile = session.profileIndex >= 0 ? profilesByIndex.get(session.profileIndex) : null;
+    const rdpAutoReconnectOpt = profile?.rdpOptions?.autoReconnect;
+    const autoReconnectEnabled = (rdpAutoReconnectOpt === 1 || rdpAutoReconnectOpt === "1") ||
+      ((rdpAutoReconnectOpt == null || rdpAutoReconnectOpt === -1 || rdpAutoReconnectOpt === "-1") && appSettings.autoReconnect);
+
+    if (!autoReconnectEnabled || session.profileIndex < 0) {
+      if (session.profileIndex >= 0) {
+        rdpAutoReconnectAttemptsByProfile.delete(session.profileIndex);
+      }
+      session.rdpCountdownBadge.hidden = true;
+      return;
+    }
+
+    // 3. 确为意外掉线且用户启用了重连时，执行带重试上限的重连倒计时
+    const maxAttempts = Math.min(20, Math.max(1, Number(profile?.rdpOptions?.maxReconnectAttempts) || appSettings.reconnectAttempts || 3));
+    const profileIndex = session.profileIndex;
+    const currentAttempts = (rdpAutoReconnectAttemptsByProfile.get(profileIndex) || 0) + 1;
+    rdpAutoReconnectAttemptsByProfile.set(profileIndex, currentAttempts);
+
+    if (currentAttempts <= maxAttempts) {
+      let remainingSeconds = 5;
+      session.rdpCountdownBadge.hidden = false;
+      session.rdpCountdownBadge.textContent =
+        `将在 ${remainingSeconds} 秒后自动重试连接 (第 ${currentAttempts}/${maxAttempts} 次)...`;
+
+      session.rdpAutoReconnectTimer = setInterval(() => {
+        remainingSeconds--;
+        if (remainingSeconds > 0) {
+          session.rdpCountdownBadge.textContent =
+            `将在 ${remainingSeconds} 秒后自动重试连接 (第 ${currentAttempts}/${maxAttempts} 次)...`;
+        } else {
           clearInterval(session.rdpAutoReconnectTimer);
           session.rdpAutoReconnectTimer = 0;
+          session.rdpCountdownBadge.textContent = `正在自动发起第 ${currentAttempts}/${maxAttempts} 次重连…`;
+          const wasActive = (activeSession === session);
+          reconnectSession(session.sessionId, { keepBackground: !wasActive }).catch(reportError);
         }
-        if (!session.rdpCountdownBadge) {
-          session.rdpCountdownBadge = document.createElement("div");
-          session.rdpCountdownBadge.className = "rdp-reconnect-countdown";
-          const content = session.rdpDisconnectNotice.querySelector(".rdp-disconnect-content");
-          const actions = session.rdpDisconnectNotice.querySelector(".rdp-disconnect-actions");
-          if (content && actions) {
-            content.insertBefore(session.rdpCountdownBadge, actions);
-          }
-        }
-        session.rdpCountdownBadge.hidden = false;
-        session.rdpCountdownBadge.textContent =
-          `将在 ${remainingSeconds} 秒后自动重试连接 (第 ${currentAttempts}/5 次)...`;
-
-        session.rdpAutoReconnectTimer = setInterval(() => {
-          remainingSeconds--;
-          if (remainingSeconds > 0) {
-            session.rdpCountdownBadge.textContent =
-              `将在 ${remainingSeconds} 秒后自动重试连接 (第 ${currentAttempts}/5 次)...`;
-          } else {
-            clearInterval(session.rdpAutoReconnectTimer);
-            session.rdpAutoReconnectTimer = 0;
-            session.rdpCountdownBadge.textContent = `正在自动发起第 ${currentAttempts}/5 次重连…`;
-            const wasActive = (activeSession === session);
-            reconnectSession(session.sessionId, { keepBackground: !wasActive }).catch(reportError);
-          }
-        }, 1000);
-      } else {
-        if (!session.rdpCountdownBadge) {
-          session.rdpCountdownBadge = document.createElement("div");
-          session.rdpCountdownBadge.className = "rdp-reconnect-countdown";
-          const content = session.rdpDisconnectNotice.querySelector(".rdp-disconnect-content");
-          const actions = session.rdpDisconnectNotice.querySelector(".rdp-disconnect-actions");
-          if (content && actions) {
-            content.insertBefore(session.rdpCountdownBadge, actions);
-          }
-        }
-        session.rdpCountdownBadge.hidden = false;
-        session.rdpCountdownBadge.textContent = "已达到最大自动重试次数 (5次)，请手动重新连接。";
-      }
+      }, 1000);
+    } else {
+      session.rdpCountdownBadge.hidden = false;
+      session.rdpCountdownBadge.textContent = `已达到最大自动重试次数 (${maxAttempts}次)，请手动重新连接。`;
     }
   };
 
@@ -9607,10 +9639,19 @@ temporary,
       } else {
         hideRdpConnectingNotice(session);
         clearRdpConnectingStatus(session.sessionId);
-        clearRdpConnectedStatus(session.sessionId);
-        const reason = state.startsWith("error:")
-          ? state.slice(6) || "远程桌面连接发生错误。"
-          : "连接已被远端、服务器或另一登录会话中断。";
+        const rawState = String(state || "");
+        let reason = "";
+        if (rawState.startsWith("conflict:")) {
+          reason = rawState.slice(9) || "远程桌面已断开：检测到另一处设备已接入该会话，已停止重连以避免互相踢下线。";
+        } else if (rawState.startsWith("logoff:")) {
+          reason = rawState.slice(7) || "远程桌面会话已注销。";
+        } else if (rawState.startsWith("disconnected:")) {
+          reason = rawState.slice(13) || "远程桌面连接已正常断开。";
+        } else if (rawState.startsWith("error:")) {
+          reason = rawState.slice(6) || "远程桌面连接发生错误。";
+        } else {
+          reason = "连接已被远端、服务器或另一登录会话中断。";
+        }
         showRdpDisconnectNotice(session, reason);
         // Only the active failed tab needs an immediate native-layout reset.
         // A background failure is already hidden by the native state handler.
