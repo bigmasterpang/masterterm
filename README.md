@@ -4,7 +4,7 @@
 
 **极致轻量、现代全能的 Windows 桌面终端工作台与 Linux/DevOps 运维利器**
 
-[![Version](https://img.shields.io/badge/version-v0.1.129-blue.svg)](https://github.com/bigmasterpang/masterterm/releases/tag/v0.1.129)
+[![Version](https://img.shields.io/badge/version-v0.1.130-blue.svg)](https://github.com/bigmasterpang/masterterm/releases/tag/v0.1.130)
 [![Platform](https://img.shields.io/badge/platform-Windows%20x64-0078D6.svg)](https://github.com/bigmasterpang/masterterm)
 [![Architecture](https://img.shields.io/badge/architecture-Win32%20%2B%20WebView2-success.svg)](https://github.com/bigmasterpang/masterterm)
 [![Size](https://img.shields.io/badge/portable%20size-~4.8%20MB-orange.svg)](https://github.com/bigmasterpang/masterterm/releases)
@@ -97,12 +97,12 @@
 
 ## 📥 下载与安装
 
-### 正式发布版本 (v0.1.129)
+### 正式发布版本 (v0.1.130)
 
 | 版本类型 | 文件名称 | 适用场景 | 下载地址 |
 | :--- | :--- | :--- | :--- |
-| **Windows 一键安装包** | `MasterTerm-0.1.129-Setup.exe` (~3.8 MB) | 推荐日常使用，自动配置开始菜单、桌面图标与系统集成 | [下载 Setup.exe](https://github.com/bigmasterpang/masterterm/releases/download/v0.1.129/MasterTerm-0.1.129-Setup.exe) |
-| **绿色便携免安装版** | `MasterTerm-0.1.129-windows-x64.zip` (~4.8 MB) | 解压即用，适合放入 U 盘随身携带或移动办公 | [下载 Portable.zip](https://github.com/bigmasterpang/masterterm/releases/download/v0.1.129/MasterTerm-0.1.129-windows-x64.zip) |
+| **Windows 一键安装包** | `MasterTerm-0.1.130-Setup.exe` (~3.8 MB) | 推荐日常使用，自动配置开始菜单、桌面图标与系统集成 | [下载 Setup.exe](https://github.com/bigmasterpang/masterterm/releases/download/v0.1.130/MasterTerm-0.1.130-Setup.exe) |
+| **绿色便携免安装版** | `MasterTerm-0.1.130-windows-x64.zip` (~4.8 MB) | 解压即用，适合放入 U 盘随身携带或移动办公 | [下载 Portable.zip](https://github.com/bigmasterpang/masterterm/releases/download/v0.1.130/MasterTerm-0.1.130-windows-x64.zip) |
 
 > 镜像加速：若访问 GitHub 较慢，亦可在 [Gitee Releases](https://gitee.com/bigmasterwang/masterterm/releases) 镜像源下载。
 
@@ -164,6 +164,9 @@ MasterTerm-cli.exe --identity "C:\keys\id_rsa" --scp-upload ./app.tar.gz root@10
 
 ## 📋 最近版本更新记录（近 5 次迭代）
 
+### v0.1.130 (2026-09-17)
+- **RDP 自动重连多端挤占死循环根治与策略安全优化**：底层精准捕获并区分 ActiveX 断开原因码（被其他端接管 3/264、远端注销 3334、主动退出 1/2）；前端引入抢占接管立即硬熔断机制，杜绝两端互踢死循环；将 RDP 自动重连默认值调整为安全禁用，彻底消除并发冲突。
+
 ### v0.1.129 (2026-09-16)
 - **启动时 TDZ ReferenceError 异常修复与全链路防御加固**：彻底消除前端脚本启动时访问未提升变量引发的异常，修复启动界面加载超时提示；为侧栏各面板增加 try-catch 隔离与 3.5 秒启动兜底守护；
 - **旧版本检查更新卡死根因彻底修复**：严格收敛服务器清单 Release Notes 体积至 2800 字节以内，保障包括 v0.1.126 在内的早期版本顺畅检查更新与升级。
@@ -182,19 +185,6 @@ MasterTerm-cli.exe --identity "C:\keys\id_rsa" --scp-upload ./app.tar.gz root@10
 - **顶栏独立终端切回分屏视图修复**：彻底修复活动窗口处于顶栏未分屏终端时点击“🔲 终端分屏”无法切入的问题，实现鼠标点击与 `Ctrl+Tab` 行为一致；
 - **分屏窗格与顶层未分屏栏标签双向自由拖拽**：打通分屏内部标签直接拖至顶层独立栏，以及顶栏标签拖入分屏窗格的双向拖拽排版链路；
 - **“🔲 终端分屏”标签专属右键菜单**：为顶栏分屏标签绑定右键快捷切换、关闭与批量命令功能。
-
-### v0.1.125 (2026-09-15)
-- **模态弹窗垂直居中视觉统一**：关于、检查更新、快速跳转与快捷键速查中心在所有高分辨率宽屏下全面统一为居中排版；
-- **更新检测对话框布局自适应重构**：底部操作按钮永久固定可视，消除长日志溢出；
-- **分屏模式顶栏独立新建会话**：在下方已开启分屏时，顶栏新建的终端精准作为全屏独立终端呈现，互不干扰。
-
-### v0.1.124 (2026-09-15)
-- **RDP 视图 Win32 原生菜单代理深度优化**：彻底解决 Direct3D 硬件加速下底层 ActiveX 画面造成的下拉菜单遮挡、裁切黑边及残影缺陷；
-- **专属独立“关于 MasterTerm”与“检查更新”弹窗解耦**：设立毛玻璃质感专属关于弹窗与独立一键版本检测升级流程。
-
-### v0.1.122 (2026-09-15)
-- **子命令严格匹配过滤（解决 systemctl status 误显 daemon-reload 问题）**：模板匹配引擎建立位置参数打分，杜绝不相关子命令误推荐；
-- **Ctrl+C / Ctrl+U / Ctrl+L 终端中断信号实时重置**：彻底消除终端打断输入后补全残留与光标错位。
 
 > 📖 查看完整历史版本记录请参阅 [CHANGELOG.md](CHANGELOG.md)。
 
