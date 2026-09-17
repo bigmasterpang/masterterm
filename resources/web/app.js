@@ -13150,6 +13150,11 @@ temporary,
           closeQuickSwitcher();
         }
       });
+      window.addEventListener("blur", () => {
+        if (dialog.open) {
+          closeQuickSwitcher();
+        }
+      });
     }
     if (input) {
       input.addEventListener("input", () => filterQuickSwitcherItems(input.value));
@@ -13210,25 +13215,7 @@ temporary,
 
   const initShortcutsDialog = () => {
     const dialog = document.querySelector("#shortcuts-dialog");
-    if (dialog) {
-      dialog.addEventListener("click", event => {
-        const rect = dialog.getBoundingClientRect();
-        const isInDialog = (
-          rect.top <= event.clientY &&
-          event.clientY <= rect.top + rect.height &&
-          rect.left <= event.clientX &&
-          event.clientX <= rect.left + rect.width
-        );
-        if (!isInDialog) {
-          closeShortcutsDialog();
-        }
-      });
-      document.addEventListener("mousedown", event => {
-        if (dialog.open && !dialog.contains(event.target)) {
-          closeShortcutsDialog();
-        }
-      });
-    }
+    if (!dialog) return;
     document.querySelector("#shortcuts-help-button")?.addEventListener("click", toggleShortcutsDialog);
     document.querySelector("#shortcuts-close-badge")?.addEventListener("click", closeShortcutsDialog);
   };
@@ -13593,6 +13580,29 @@ temporary,
     document.querySelector("#update-dialog-close")?.addEventListener("click", closeUpdateDialog);
     document.querySelector("#update-dialog-close-btn")?.addEventListener("click", closeUpdateDialog);
     document.querySelector("#update-dialog-recheck-btn")?.addEventListener("click", runStandaloneUpdateCheck);
+
+    dialog.addEventListener("click", event => {
+      const rect = dialog.getBoundingClientRect();
+      const inBox = (
+        rect.top <= event.clientY &&
+        event.clientY <= rect.top + rect.height &&
+        rect.left <= event.clientX &&
+        event.clientX <= rect.left + rect.width
+      );
+      if (!inBox) {
+        closeUpdateDialog();
+      }
+    });
+    document.addEventListener("mousedown", event => {
+      if (dialog.open && !dialog.contains(event.target)) {
+        closeUpdateDialog();
+      }
+    });
+    window.addEventListener("blur", () => {
+      if (dialog.open) {
+        closeUpdateDialog();
+      }
+    });
   };
   initUpdateDialog();
 
@@ -13607,7 +13617,9 @@ temporary,
   };
   window.hasActiveModal = hasActiveModal;
 
-  const dismissActiveModal = () => {
+  const dismissActiveModal = (options = {}) => {
+    const lightDismissOnly = Boolean(options && options.lightDismissOnly);
+
     // 0. Dropdown menus
     const tm = document.querySelector("#tools-menu");
     const hm = document.querySelector("#help-menu");
@@ -13618,42 +13630,59 @@ temporary,
     if (thm && !thm.hidden) { thm.hidden = true; closedMenu = true; }
     if (closedMenu) return true;
 
-    // 1. Quick switcher has top priority
+    // 1. Quick switcher has top priority (light-dismissable)
     const qs = document.querySelector("#quick-switcher-dialog");
     if (qs?.open) {
       closeQuickSwitcher();
       return true;
     }
-    // 2. Shortcuts dialog
-    const sc = document.querySelector("#shortcuts-dialog");
-    if (sc?.open) {
-      closeShortcutsDialog();
-      return true;
-    }
-    // 2.1 Update dialog & About dialog
+    // 2. Update dialog (light-dismissable)
     const ud = document.querySelector("#update-dialog");
     if (ud?.open) {
       closeUpdateDialog();
       return true;
     }
+    // RDP key menu & Terminal search bar
+    if (rdpKeyMenu && !rdpKeyMenu.hidden) {
+      closeRdpKeyMenu();
+      return true;
+    }
+    if (terminalSearchBar && !terminalSearchBar.hidden) {
+      closeTerminalSearch();
+      return true;
+    }
+
+    // When lightDismissOnly is requested (from backdrop click, outside click, or dim overlay click),
+    // strictly protect all other dialogs: they require explicit user action (close button, cancel, or Esc)
+    if (lightDismissOnly) {
+      return false;
+    }
+
+    // 3. Shortcuts dialog
+    const sc = document.querySelector("#shortcuts-dialog");
+    if (sc?.open) {
+      closeShortcutsDialog();
+      return true;
+    }
+    // 4. About dialog
     const ab = document.querySelector("#about-dialog");
     if (ab?.open) {
       closeAboutDialog();
       return true;
     }
-    // 3. Diagnostics
+    // 5. Diagnostics
     const td = document.querySelector("#terminal-diagnostics-dialog");
     if (td?.open) {
       td.close();
       return true;
     }
-    // 4. Remote preview
+    // 6. Remote preview
     const rp = document.querySelector("#remote-preview-dialog");
     if (rp?.open) {
       rp.close();
       return true;
     }
-    // 5. Cloud history / diff
+    // 7. Cloud history / diff
     const ch = document.querySelector("#cloud-history-dialog");
     if (ch?.open) {
       ch.close();
@@ -13665,7 +13694,7 @@ temporary,
       if (cd.open) cd.close();
       return true;
     }
-    // 6. Command favorites / Batch command / Command macro
+    // 8. Command favorites / Batch command / Command macro
     const cmdMacro = document.querySelector("#command-macro-dialog");
     if (cmdMacro?.open) {
       document.querySelector("#command-macro-cancel")?.click();
@@ -13683,43 +13712,34 @@ temporary,
       if (bc.open) bc.close();
       return true;
     }
-    // RDP key menu & Terminal search bar
-    if (rdpKeyMenu && !rdpKeyMenu.hidden) {
-      closeRdpKeyMenu();
-      return true;
-    }
-    if (terminalSearchBar && !terminalSearchBar.hidden) {
-      closeTerminalSearch();
-      return true;
-    }
-    // 7. Action dialog
+    // 9. Action dialog
     const ad = document.querySelector("#action-dialog");
     if (ad?.open) {
       document.querySelector("#action-dialog-close")?.click();
       if (ad.open) ad.close();
       return true;
     }
-    // 8. Tunnel dialog
+    // 10. Tunnel dialog
     const tl = document.querySelector("#tunnel-dialog");
     if (tl?.open) {
       tl.close();
       return true;
     }
-    // 9. Settings dialog
+    // 11. Settings dialog
     const sd = document.querySelector("#settings-dialog");
     if (sd?.open) {
       document.querySelector("#settings-cancel")?.click();
       if (sd.open) sd.close();
       return true;
     }
-    // 10. Server dialog
+    // 12. Server dialog
     const srv = document.querySelector("#server-dialog");
     if (srv?.open) {
       document.querySelector("#server-cancel")?.click();
       if (srv.open) srv.close();
       return true;
     }
-    // 11. Any remaining open dialog
+    // 13. Any remaining open dialog
     const anyDialog = document.querySelector("dialog[open]:not(.rdp-editor-fallback-freeze)");
     if (anyDialog) {
       anyDialog.close();
@@ -13738,7 +13758,8 @@ temporary,
     }
   }, true);
 
-  // Global backdrop click dismissal for dialogs
+  // Global backdrop click dismissal: only light-dismissable dialogs (quick switcher, update dialog)
+  // close on outside/backdrop click; all other dialogs require active user closure.
   document.addEventListener("click", event => {
     if (event.target instanceof HTMLDialogElement && event.target.open) {
       const rect = event.target.getBoundingClientRect();
@@ -13747,7 +13768,7 @@ temporary,
         rect.left <= event.clientX && event.clientX <= rect.left + rect.width
       );
       if (!inBox) {
-        dismissActiveModal();
+        dismissActiveModal({ lightDismissOnly: true });
       }
     }
   });

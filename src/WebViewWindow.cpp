@@ -2466,11 +2466,16 @@ bool WebViewWindow::showStartupSplash() const
     return !m_host->isReady();
 }
 
-void WebViewWindow::dismissActiveModal()
+void WebViewWindow::dismissActiveModal(bool lightDismissOnly)
 {
     if (m_host) {
-        m_host->executeScript(
-            L"window.dismissActiveModal && window.dismissActiveModal();");
+        if (lightDismissOnly) {
+            m_host->executeScript(
+                L"window.dismissActiveModal && window.dismissActiveModal({ lightDismissOnly: true });");
+        } else {
+            m_host->executeScript(
+                L"window.dismissActiveModal && window.dismissActiveModal();");
+        }
         m_host->focus();
     }
 }
@@ -2481,7 +2486,7 @@ void WebViewWindow::configureRdpSession(
     if (!session)
         return;
     session->setDismissModalHandler([this]() {
-        dismissActiveModal();
+        dismissActiveModal(true);
     });
     session->setKeyHandler([this, sessionId](UINT key) {
         if (key == VK_F11) {

@@ -126,7 +126,7 @@ private:
         bool canMoveUp, bool canMoveDown);
     void showExistingConnectionsMenu(
         int x, int y, const std::vector<std::pair<int, std::string>> &items);
-    void dismissActiveModal();
+    void dismissActiveModal(bool lightDismissOnly = false);
     struct RdpHostedSession;
     RdpHostedSession *findRdpSession(const std::string &sessionId);
 
