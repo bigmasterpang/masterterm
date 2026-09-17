@@ -4,7 +4,7 @@
 
 **极致轻量、现代全能的 Windows 桌面终端工作台与 Linux/DevOps 运维利器**
 
-[![Version](https://img.shields.io/badge/version-v0.1.130-blue.svg)](https://github.com/bigmasterpang/masterterm/releases/tag/v0.1.130)
+[![Version](https://img.shields.io/badge/version-v0.1.131-blue.svg)](https://github.com/bigmasterpang/masterterm/releases/tag/v0.1.131)
 [![Platform](https://img.shields.io/badge/platform-Windows%20x64-0078D6.svg)](https://github.com/bigmasterpang/masterterm)
 [![Architecture](https://img.shields.io/badge/architecture-Win32%20%2B%20WebView2-success.svg)](https://github.com/bigmasterpang/masterterm)
 [![Size](https://img.shields.io/badge/portable%20size-~4.8%20MB-orange.svg)](https://github.com/bigmasterpang/masterterm/releases)
@@ -97,12 +97,12 @@
 
 ## 📥 下载与安装
 
-### 正式发布版本 (v0.1.130)
+### 正式发布版本 (v0.1.131)
 
 | 版本类型 | 文件名称 | 适用场景 | 下载地址 |
 | :--- | :--- | :--- | :--- |
-| **Windows 一键安装包** | `MasterTerm-0.1.130-Setup.exe` (~3.8 MB) | 推荐日常使用，自动配置开始菜单、桌面图标与系统集成 | [下载 Setup.exe](https://github.com/bigmasterpang/masterterm/releases/download/v0.1.130/MasterTerm-0.1.130-Setup.exe) |
-| **绿色便携免安装版** | `MasterTerm-0.1.130-windows-x64.zip` (~4.8 MB) | 解压即用，适合放入 U 盘随身携带或移动办公 | [下载 Portable.zip](https://github.com/bigmasterpang/masterterm/releases/download/v0.1.130/MasterTerm-0.1.130-windows-x64.zip) |
+| **Windows 一键安装包** | `MasterTerm-0.1.131-Setup.exe` (~3.8 MB) | 推荐日常使用，自动配置开始菜单、桌面图标与系统集成 | [下载 Setup.exe](https://github.com/bigmasterpang/masterterm/releases/download/v0.1.131/MasterTerm-0.1.131-Setup.exe) |
+| **绿色便携免安装版** | `MasterTerm-0.1.131-windows-x64.zip` (~4.8 MB) | 解压即用，适合放入 U 盘随身携带或移动办公 | [下载 Portable.zip](https://github.com/bigmasterpang/masterterm/releases/download/v0.1.131/MasterTerm-0.1.131-windows-x64.zip) |
 
 > 镜像加速：若访问 GitHub 较慢，亦可在 [Gitee Releases](https://gitee.com/bigmasterwang/masterterm/releases) 镜像源下载。
 
@@ -164,6 +164,9 @@ MasterTerm-cli.exe --identity "C:\keys\id_rsa" --scp-upload ./app.tar.gz root@10
 
 ## 📋 最近版本更新记录（近 5 次迭代）
 
+### v0.1.131 (2026-09-17)
+- **弹窗关闭与失焦防误关交互体验优化**：精细化分流弹窗关闭行为，除快捷跳转 (`Ctrl+P`) 与检查更新保留失焦/点击外部自动关闭外，服务器配置、系统设置、快捷键速查等所有表单弹窗均升级为严格保护模式，防止点击背景误关丢失已输入信息，统一要求用户主动关闭。
+
 ### v0.1.130 (2026-09-17)
 - **RDP 自动重连多端挤占死循环根治与策略安全优化**：底层精准捕获并区分 ActiveX 断开原因码（被其他端接管 3/264、远端注销 3334、主动退出 1/2）；前端引入抢占接管立即硬熔断机制，杜绝两端互踢死循环；将 RDP 自动重连默认值调整为安全禁用，彻底消除并发冲突。
 
@@ -180,11 +183,6 @@ MasterTerm-cli.exe --identity "C:\keys\id_rsa" --scp-upload ./app.tar.gz root@10
 - **公益备份服务声明与安全防护全面落地**：官方文档与界面正式明确 `vm.dapang.wang` 公益免费服务性质与使用指南；
 - **普通用户云端备份 3 个配额限制**：服务端与前端双向建立配额拦截与提示，防止恶意刷量占用存储空间；
 - **全链路漏洞防护与安全加固**：增加客户端/服务端 5MB 大包上限拦截防内存 DoS、私钥文件名白名单防 Windows 路径穿越注入，以及服务端 IP 滑动窗口防暴力破解限流。
-
-### v0.1.126 (2026-09-15)
-- **顶栏独立终端切回分屏视图修复**：彻底修复活动窗口处于顶栏未分屏终端时点击“🔲 终端分屏”无法切入的问题，实现鼠标点击与 `Ctrl+Tab` 行为一致；
-- **分屏窗格与顶层未分屏栏标签双向自由拖拽**：打通分屏内部标签直接拖至顶层独立栏，以及顶栏标签拖入分屏窗格的双向拖拽排版链路；
-- **“🔲 终端分屏”标签专属右键菜单**：为顶栏分屏标签绑定右键快捷切换、关闭与批量命令功能。
 
 > 📖 查看完整历史版本记录请参阅 [CHANGELOG.md](CHANGELOG.md)。
 
