@@ -715,6 +715,8 @@ bool writeNativeConfig(const NativeJsonDom::Object &config)
     return NativeConfigFile::writeObject(nativeConfigPath(), config);
 }
 
+NativeString nativeText(const std::string &value);
+
 struct ServerRecord
 {
     std::string connectionType = "ssh";
@@ -729,6 +731,7 @@ struct ServerRecord
     std::string keyPath;
     std::string keyPassphrase;
     std::string proxyJump;
+    bool proxyJumpEnabled = true;
     std::string proxyKeyPath;
     std::string password;
     std::string proxyPassword;
@@ -745,6 +748,12 @@ struct ServerRecord
         int targetPort = 0;
     };
     std::vector<TunnelConfig> tunnels;
+
+    NativeString effectiveProxyJump() const {
+        return (proxyJumpEnabled && !proxyJump.empty())
+            ? nativeText(proxyJump)
+            : NativeString();
+    }
 };
 
 std::string jsonText(
@@ -963,6 +972,8 @@ ServerRecord serverRecordFromJson(const NativeJsonDom::Object &object)
     record.keyPath = jsonText(object, "keyPath");
     record.keyPassphrase = jsonText(object, "keyPassphrase");
     record.proxyJump = jsonText(object, "proxyJump");
+    record.proxyJumpEnabled =
+        NativeJsonDom::booleanValue(object, "proxyJumpEnabled", true);
     record.proxyKeyPath = jsonText(object, "proxyKeyPath");
     record.password = jsonText(object, "password");
     record.proxyPassword = jsonText(object, "proxyPassword");
@@ -1011,6 +1022,7 @@ NativeJsonDom::Object serverRecordJson(const ServerRecord &record)
     object.values.emplace("iconKey", record.iconKey);
     object.values.emplace("keyPath", record.keyPath);
     object.values.emplace("proxyJump", record.proxyJump);
+    object.values.emplace("proxyJumpEnabled", record.proxyJumpEnabled);
     object.values.emplace("proxyKeyPath", record.proxyKeyPath);
     object.values.emplace(
         "serialDataBits", static_cast<double>(record.serialDataBits));
@@ -1176,6 +1188,9 @@ bool applyProfileParams(
     if (NativeJsonDom::contains(params, "proxyJump"))
         record.proxyJump = utf8Text(nativeText(
             NativeJsonDom::stringValue(params, "proxyJump")).trimmed());
+    if (NativeJsonDom::contains(params, "proxyJumpEnabled"))
+        record.proxyJumpEnabled = NativeJsonDom::booleanValue(
+            params, "proxyJumpEnabled", true);
     if (NativeJsonDom::contains(params, "proxyKeyPath"))
         record.proxyKeyPath = utf8Text(nativeText(
             NativeJsonDom::stringValue(params, "proxyKeyPath")).trimmed());
@@ -1368,13 +1383,13 @@ void WebViewBackend::pollExitSelfTest()
             nativeText(record.keyPassphrase).isEmpty()
                 ? readStoredCredential(NativeString("KeyPassphrase"), address)
                 : nativeText(record.keyPassphrase);
-        const NativeString proxyJump = nativeText(record.proxyJump);
+        const NativeString proxyJump = record.effectiveProxyJump();
         const NativeString configuredProxyPassword =
             nativeText(record.proxyPassword);
-        const NativeString proxyPassword = configuredProxyPassword.isEmpty()
+        const NativeString proxyPassword = (!proxyJump.isEmpty() && configuredProxyPassword.isEmpty())
             ? readStoredCredential(NativeString("ProxyJump"), proxyJump)
-            : configuredProxyPassword;
-        const NativeString proxyKeyPath = nativeText(record.proxyKeyPath);
+            : (proxyJump.isEmpty() ? NativeString() : configuredProxyPassword);
+        const NativeString proxyKeyPath = proxyJump.isEmpty() ? NativeString() : nativeText(record.proxyKeyPath);
         const std::string port = record.port.empty() ? "22" : record.port;
 
         auto *ssh = new SshSession();
@@ -1961,7 +1976,7 @@ void WebViewBackend::receiveMessage(const std::string &message)
             const ServerRecord &record =
                 records.at(static_cast<std::size_t>(index));
             const NativeString address = nativeText(record.address);
-            const NativeString proxyJump = nativeText(record.proxyJump);
+            const NativeString proxyJump = record.effectiveProxyJump();
             const NativeString storedPasswordValue =
                 nativeText(record.password).isEmpty()
                     ? readStoredPassword(address)
@@ -2130,12 +2145,12 @@ void WebViewBackend::receiveMessage(const std::string &message)
         const NativeString keyPassphrase = nativeText(record.keyPassphrase).isEmpty()
             ? readStoredCredential(NativeString("KeyPassphrase"), address)
             : nativeText(record.keyPassphrase);
-        const NativeString proxyJump = nativeText(record.proxyJump);
+        const NativeString proxyJump = record.effectiveProxyJump();
         const NativeString configuredProxyPassword = nativeText(record.proxyPassword);
-        const NativeString proxyPassword = configuredProxyPassword.isEmpty()
+        const NativeString proxyPassword = (!proxyJump.isEmpty() && configuredProxyPassword.isEmpty())
             ? readStoredCredential(NativeString("ProxyJump"), proxyJump)
-            : configuredProxyPassword;
-        const NativeString proxyKeyPath = nativeText(record.proxyKeyPath);
+            : (proxyJump.isEmpty() ? NativeString() : configuredProxyPassword);
+        const NativeString proxyKeyPath = proxyJump.isEmpty() ? NativeString() : nativeText(record.proxyKeyPath);
 
         // A key path synced from another machine may not exist locally
         // (different user profile / drive).  Ask the user to pick the local
@@ -3686,12 +3701,12 @@ void WebViewBackend::startSftpList(const NativeString &requestId, int profileInd
     const NativeString password = configuredPassword.isEmpty()
         ? readStoredPassword(address) : configuredPassword;
     const NativeString keyPath = nativeText(record.keyPath);
-    const NativeString proxyJump = nativeText(record.proxyJump);
+    const NativeString proxyJump = record.effectiveProxyJump();
     const NativeString configuredProxyPassword = nativeText(record.proxyPassword);
-    const NativeString proxyPassword = configuredProxyPassword.isEmpty()
+    const NativeString proxyPassword = (!proxyJump.isEmpty() && configuredProxyPassword.isEmpty())
         ? readStoredCredential(NativeString("ProxyJump"), proxyJump)
-        : configuredProxyPassword;
-    const NativeString proxyKeyPath = nativeText(record.proxyKeyPath);
+        : (proxyJump.isEmpty() ? NativeString() : configuredProxyPassword);
+    const NativeString proxyKeyPath = proxyJump.isEmpty() ? NativeString() : nativeText(record.proxyKeyPath);
 
     if (type != NativeString("ssh")) {
         sendError(requestId, NativeString("SFTP 仅适用于 SSH 服务器"));
@@ -3807,11 +3822,11 @@ void WebViewBackend::startSftpHistory(const NativeString &requestId, int profile
         sendNativeResult(requestId, NativeJsonDom::Value(NativeJsonDom::Array{}));
         return;
     }
-    const NativeString proxyJump = nativeText(record.proxyJump);
-    const NativeString proxyPassword = nativeText(record.proxyPassword).isEmpty()
+    const NativeString proxyJump = record.effectiveProxyJump();
+    const NativeString proxyPassword = (!proxyJump.isEmpty() && nativeText(record.proxyPassword).isEmpty())
         ? readStoredCredential(NativeString("ProxyJump"), proxyJump)
-        : nativeText(record.proxyPassword);
-    const NativeString proxyKeyPath = nativeText(record.proxyKeyPath);
+        : (proxyJump.isEmpty() ? NativeString() : nativeText(record.proxyPassword));
+    const NativeString proxyKeyPath = proxyJump.isEmpty() ? NativeString() : nativeText(record.proxyKeyPath);
     const int at = address.lastIndexOf('@');
     const NativeString user = at > 0 ? address.left(at) : NativeString();
     const NativeString homePath = user == NativeString("root") ? NativeString("/root")
@@ -3971,11 +3986,11 @@ void WebViewBackend::startSftpPreview(
             "未找到 SFTP 凭据，请先连接一次该 SSH 服务器"));
         return;
     }
-    const NativeString proxyJump = nativeText(record.proxyJump);
-    const NativeString proxyPassword = nativeText(record.proxyPassword).isEmpty()
+    const NativeString proxyJump = record.effectiveProxyJump();
+    const NativeString proxyPassword = (!proxyJump.isEmpty() && nativeText(record.proxyPassword).isEmpty())
         ? readStoredCredential(NativeString("ProxyJump"), proxyJump)
-        : nativeText(record.proxyPassword);
-    const NativeString proxyKeyPath = nativeText(record.proxyKeyPath);
+        : (proxyJump.isEmpty() ? NativeString() : nativeText(record.proxyPassword));
+    const NativeString proxyKeyPath = proxyJump.isEmpty() ? NativeString() : nativeText(record.proxyKeyPath);
     const NativeString workerPath = applicationDirectory()
         + NativeString("/MasterTermSftpWorker.exe");
     if (!std::filesystem::exists(nativePath(workerPath))) {
@@ -4115,11 +4130,11 @@ void WebViewBackend::openRemoteFile(
         return;
     }
     const NativeString localPath = pathText(editDirectory / localName);
-    const NativeString proxyJump = nativeText(record.proxyJump);
-    const NativeString proxyPassword = nativeText(record.proxyPassword).isEmpty()
+    const NativeString proxyJump = record.effectiveProxyJump();
+    const NativeString proxyPassword = (!proxyJump.isEmpty() && nativeText(record.proxyPassword).isEmpty())
         ? readStoredCredential(NativeString("ProxyJump"), proxyJump)
-        : nativeText(record.proxyPassword);
-    const NativeString proxyKeyPath = nativeText(record.proxyKeyPath);
+        : (proxyJump.isEmpty() ? NativeString() : nativeText(record.proxyPassword));
+    const NativeString proxyKeyPath = proxyJump.isEmpty() ? NativeString() : nativeText(record.proxyKeyPath);
     auto *process = new NativeProcess();
     if (!process->start(toWide(workerPath), toWideArguments({
             NativeString("--download"), address, nativeText(record.port),
@@ -4240,11 +4255,11 @@ void WebViewBackend::startRemoteEditUpload(const NativeString &editKey)
     const NativeString keyPath = nativeText(record.keyPath);
     if (record.connectionType != "ssh" || (password.isEmpty() && keyPath.isEmpty()))
         return;
-    const NativeString proxyJump = nativeText(record.proxyJump);
-    const NativeString proxyPassword = nativeText(record.proxyPassword).isEmpty()
+    const NativeString proxyJump = record.effectiveProxyJump();
+    const NativeString proxyPassword = (!proxyJump.isEmpty() && nativeText(record.proxyPassword).isEmpty())
         ? readStoredCredential(NativeString("ProxyJump"), proxyJump)
-        : nativeText(record.proxyPassword);
-    const NativeString proxyKeyPath = nativeText(record.proxyKeyPath);
+        : (proxyJump.isEmpty() ? NativeString() : nativeText(record.proxyPassword));
+    const NativeString proxyKeyPath = proxyJump.isEmpty() ? NativeString() : nativeText(record.proxyKeyPath);
     if (edit.conflict == "prompt") {
         edit.changed = false;
         NativeJsonDom::Object payload;
@@ -4513,12 +4528,12 @@ void WebViewBackend::startSftpOperation(
     const NativeString password = configuredPassword.isEmpty()
         ? readStoredPassword(address) : configuredPassword;
     const NativeString keyPath = nativeText(record.keyPath);
-    const NativeString proxyJump = nativeText(record.proxyJump);
+    const NativeString proxyJump = record.effectiveProxyJump();
     const NativeString configuredProxyPassword = nativeText(record.proxyPassword);
-    const NativeString proxyPassword = configuredProxyPassword.isEmpty()
+    const NativeString proxyPassword = (!proxyJump.isEmpty() && configuredProxyPassword.isEmpty())
         ? readStoredCredential(NativeString("ProxyJump"), proxyJump)
-        : configuredProxyPassword;
-    const NativeString proxyKeyPath = nativeText(record.proxyKeyPath);
+        : (proxyJump.isEmpty() ? NativeString() : configuredProxyPassword);
+    const NativeString proxyKeyPath = proxyJump.isEmpty() ? NativeString() : nativeText(record.proxyKeyPath);
     if (password.isEmpty() && keyPath.isEmpty()) {
         sendError(requestId, NativeString("未找到 SFTP 凭据，请先连接一次该 SSH 服务器"));
         return;
@@ -4618,12 +4633,12 @@ void WebViewBackend::startSftpTransfer(
     const NativeString password = configuredPassword.isEmpty()
         ? readStoredPassword(address) : configuredPassword;
     const NativeString keyPath = nativeText(record.keyPath);
-    const NativeString proxyJump = nativeText(record.proxyJump);
+    const NativeString proxyJump = record.effectiveProxyJump();
     const NativeString configuredProxyPassword = nativeText(record.proxyPassword);
-    const NativeString proxyPassword = configuredProxyPassword.isEmpty()
+    const NativeString proxyPassword = (!proxyJump.isEmpty() && configuredProxyPassword.isEmpty())
         ? readStoredCredential(NativeString("ProxyJump"), proxyJump)
-        : configuredProxyPassword;
-    const NativeString proxyKeyPath = nativeText(record.proxyKeyPath);
+        : (proxyJump.isEmpty() ? NativeString() : configuredProxyPassword);
+    const NativeString proxyKeyPath = proxyJump.isEmpty() ? NativeString() : nativeText(record.proxyKeyPath);
     if (password.isEmpty() && keyPath.isEmpty()) {
         sendError(requestId, NativeString("未找到 SFTP 凭据，请先连接一次该 SSH 服务器"));
         return;
@@ -5043,11 +5058,11 @@ void WebViewBackend::startRemoteMonitor(const NativeString &sessionId, int profi
         + NativeString("/MasterTermSftpWorker.exe");
     if (!std::filesystem::exists(nativePath(workerPath)))
         return;
-    const NativeString proxyJump = nativeText(record.proxyJump);
-    const NativeString proxyPassword = nativeText(record.proxyPassword).isEmpty()
+    const NativeString proxyJump = record.effectiveProxyJump();
+    const NativeString proxyPassword = (!proxyJump.isEmpty() && nativeText(record.proxyPassword).isEmpty())
         ? readStoredCredential(NativeString("ProxyJump"), proxyJump)
-        : nativeText(record.proxyPassword);
-    const NativeString proxyKeyPath = nativeText(record.proxyKeyPath);
+        : (proxyJump.isEmpty() ? NativeString() : nativeText(record.proxyPassword));
+    const NativeString proxyKeyPath = proxyJump.isEmpty() ? NativeString() : nativeText(record.proxyKeyPath);
     auto process = std::make_unique<NativeProcess>();
     if (!process->start(toWide(workerPath),
             toWideArguments({NativeString("--monitor"), address, port,
@@ -5195,7 +5210,7 @@ void WebViewBackend::startRemoteLatencyProbe(const NativeString &sessionId, int 
 
     bool isProxyJump = false;
     NativeString probeHost = host;
-    if (!record.proxyJump.empty()) {
+    if (record.proxyJumpEnabled && !record.proxyJump.empty()) {
         NativeString jumpSpec = nativeText(record.proxyJump).trimmed();
         const int jumpAt = jumpSpec.lastIndexOf('@');
         NativeString jumpHostPort = jumpAt >= 0 ? jumpSpec.mid(jumpAt + 1) : jumpSpec;
@@ -6844,6 +6859,7 @@ NativeJsonDom::Array WebViewBackend::exportCloudServers() const{
         profile.values.emplace("keyPath", record.keyPath);
         profile.values.emplace("keyPassphrase", record.keyPassphrase);
         profile.values.emplace("proxyJump", record.proxyJump);
+        profile.values.emplace("proxyJumpEnabled", record.proxyJumpEnabled);
         profile.values.emplace("proxyKeyPath", record.proxyKeyPath);
         profile.values.emplace(
             "serialDataBits", static_cast<double>(record.serialDataBits));
@@ -6997,6 +7013,9 @@ NativeJsonDom::Value WebViewBackend::importCloudServers(
         apply("keyPath", &ServerRecord::keyPath);
         apply("keyPassphrase", &ServerRecord::keyPassphrase);
         apply("proxyJump", &ServerRecord::proxyJump);
+        if (NativeJsonDom::contains(server, "proxyJumpEnabled"))
+            merged.proxyJumpEnabled =
+                NativeJsonDom::booleanValue(server, "proxyJumpEnabled", true);
         apply("proxyKeyPath", &ServerRecord::proxyKeyPath);
         apply("serialParity", &ServerRecord::serialParity);
         apply("serialStopBits", &ServerRecord::serialStopBits);
@@ -7309,6 +7328,7 @@ NativeJsonDom::Array WebViewBackend::serverProfiles() const
         profile.values.emplace("icon", record.iconKey);
         profile.values.emplace("keyPath", record.keyPath);
         profile.values.emplace("proxyJump", record.proxyJump);
+        profile.values.emplace("proxyJumpEnabled", record.proxyJumpEnabled);
         profile.values.emplace("proxyKeyPath", record.proxyKeyPath);
         profile.values.emplace(
             "passwordLength",

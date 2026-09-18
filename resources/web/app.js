@@ -1469,6 +1469,13 @@
     document.querySelector("#server-proxy-port").value = proxyEndpoint.port;
     document.querySelector("#server-proxy-password").value = "";
     document.querySelector("#server-proxy-key-path").value = profile?.proxyKeyPath ?? "";
+    const proxyEnabledCheckbox = document.querySelector("#server-proxy-enabled");
+    const hasProxy = Boolean(profile?.proxyJump);
+    const isProxyEnabled = profile ? (profile.proxyJumpEnabled !== false && hasProxy) : false;
+    if (proxyEnabledCheckbox) {
+      proxyEnabledCheckbox.checked = isProxyEnabled;
+    }
+    document.querySelector("#jump-server-body")?.classList.toggle("disabled", !isProxyEnabled);
     document.querySelector("#server-data-bits").value = String(profile?.serialDataBits ?? 8);
     document.querySelector("#server-parity").value = profile?.serialParity ?? "none";
     document.querySelector("#server-stop-bits").value = profile?.serialStopBits ?? "1";
@@ -1555,6 +1562,7 @@
     password: document.querySelector("#server-password").value,
     keyPath: document.querySelector("#server-key-path").value,
     keyPassphrase: document.querySelector("#server-key-passphrase").value,
+    proxyJumpEnabled: document.querySelector("#server-proxy-enabled")?.checked ?? false,
     proxyJump: formatProxyJump(
       document.querySelector("#server-proxy-user").value,
       document.querySelector("#server-proxy-host").value,
@@ -2646,6 +2654,7 @@
         keyPath: typeof item.keyPath === "string" ? item.keyPath : "",
         keyPassphrase: typeof item.keyPassphrase === "string" ? item.keyPassphrase : "",
         proxyJump: typeof item.proxyJump === "string" ? item.proxyJump : "",
+        proxyJumpEnabled: item.proxyJumpEnabled !== false,
         proxyKeyPath: typeof item.proxyKeyPath === "string" ? item.proxyKeyPath : "",
         serialDataBits: Number.isFinite(Number(item.serialDataBits))
           ? Math.min(8, Math.max(5, Math.trunc(Number(item.serialDataBits)))) : 8,
@@ -12951,6 +12960,10 @@ temporary,
     "click", () => browsePrivateKey("#server-key-path"));
   document.querySelector("#server-proxy-key-browse").addEventListener(
     "click", () => browsePrivateKey("#server-proxy-key-path"));
+  document.querySelector("#server-proxy-enabled")?.addEventListener("change", () => {
+    const enabled = document.querySelector("#server-proxy-enabled")?.checked ?? false;
+    document.querySelector("#jump-server-body")?.classList.toggle("disabled", !enabled);
+  });
   serverForm.addEventListener("submit", event => {
     event.preventDefault();
     serverFormStatus.textContent = "正在保存…";

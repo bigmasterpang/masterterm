@@ -158,12 +158,18 @@ private:
     };
     enum RdpTabsContextCommand {
         RdpTabsNewLocal = 250,
-        RdpTabsNewSsh = 251,
-        RdpTabsNewRdp = 252,
-        RdpTabsCloseAll = 253,
-        RdpTabsCloseSplit = 254,
-        RdpTabsSortName = 255,
-        RdpTabsSortType = 256,
+        RdpTabsNewLocalPwsh = 251,
+        RdpTabsNewLocalPowerShell = 252,
+        RdpTabsNewLocalCmd = 253,
+        RdpTabsNewLocalWsl = 254,
+        RdpTabsNewLocalGitBash = 255,
+        RdpTabsNewSsh = 256,
+        RdpTabsNewRdp = 257,
+        RdpTabsCloseAll = 258,
+        RdpTabsCloseSplit = 259,
+        RdpTabsBatchCommand = 260,
+        RdpTabsSortName = 261,
+        RdpTabsSortType = 262,
     };
 public:
     enum ThemeMenuCommand {

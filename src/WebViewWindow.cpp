@@ -1489,7 +1489,7 @@ void WebViewWindow::paintNativePopupMenu(HDC dc) const
         RECT itemRect{
             itemPadding, top, itemWidth,
             top + scaleForDpi(30, dpi)};
-        if (m_nativePopupMenuHover == static_cast<int>(index)) {
+        if (m_nativePopupMenuHover == static_cast<int>(index) && !item.disabled) {
             HBRUSH hover = CreateSolidBrush(palette.hover);
             HPEN hoverPen = CreatePen(PS_SOLID, 0, palette.hover);
             HGDIOBJ oldHoverBrush = SelectObject(dc, hover);
@@ -4246,11 +4246,18 @@ void WebViewWindow::showRdpTabsContextMenu(int x, int y, bool canCloseSplit)
         GetCursorPos(&point);
     std::vector<NativePopupMenuItem> menuItems{
         {RdpTabsNewLocal, L"打开默认本地终端"},
+        {RdpTabsNewLocalPwsh, L"PowerShell 7"},
+        {RdpTabsNewLocalPowerShell, L"Windows PowerShell"},
+        {RdpTabsNewLocalCmd, L"命令提示符 (CMD)"},
+        {RdpTabsNewLocalWsl, L"WSL (Linux)"},
+        {RdpTabsNewLocalGitBash, L"Git Bash"},
+        {0, L"", true},
         {RdpTabsNewSsh, L"打开 SSH 终端…"},
         {RdpTabsNewRdp, L"打开远程桌面 (RDP)…"},
         {0, L"", true},
         {RdpTabsCloseAll, L"关闭全部"},
-        {RdpTabsCloseSplit, L"关闭分屏", !canCloseSplit},
+        {RdpTabsCloseSplit, L"关闭分屏", false, !canCloseSplit},
+        {RdpTabsBatchCommand, L"批量执行命令…"},
         {0, L"", true},
         {RdpTabsSortName, L"标签按名称排序"},
         {RdpTabsSortType, L"标签按连接类型排序"}
@@ -4262,10 +4269,16 @@ void WebViewWindow::showRdpTabsContextMenu(int x, int y, bool canCloseSplit)
     const wchar_t *action = nullptr;
     switch (command) {
     case RdpTabsNewLocal: action = L"new-local"; break;
+    case RdpTabsNewLocalPwsh: action = L"new-local-pwsh"; break;
+    case RdpTabsNewLocalPowerShell: action = L"new-local-powershell"; break;
+    case RdpTabsNewLocalCmd: action = L"new-local-cmd"; break;
+    case RdpTabsNewLocalWsl: action = L"new-local-wsl"; break;
+    case RdpTabsNewLocalGitBash: action = L"new-local-gitbash"; break;
     case RdpTabsNewSsh: action = L"new-ssh"; break;
     case RdpTabsNewRdp: action = L"new-rdp"; break;
     case RdpTabsCloseAll: action = L"close-all"; break;
     case RdpTabsCloseSplit: action = L"split-close"; break;
+    case RdpTabsBatchCommand: action = L"batch-command"; break;
     case RdpTabsSortName: action = L"sort-name"; break;
     case RdpTabsSortType: action = L"sort-type"; break;
     default: break;

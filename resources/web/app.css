@@ -452,6 +452,32 @@ html[data-theme="light"] .jump-server-section { background: rgba(241, 245, 249, 
 html[data-theme="light"] .jump-server-section legend { color: #1e40af; }
 html[data-theme="blue"] .jump-server-section { background: rgba(15, 30, 54, .5); border-color: #1e3a8a; }
 html[data-theme="blue"] .jump-server-section legend { color: #93c5fd; }
+.jump-server-enable-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 12px;
+  font-weight: 600;
+  color: #bfdbfe;
+}
+.jump-server-enable-label input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  cursor: pointer;
+}
+html[data-theme="light"] .jump-server-enable-label {
+  color: #1e40af;
+}
+html[data-theme="blue"] .jump-server-enable-label {
+  color: #93c5fd;
+}
+.jump-server-grid.disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
 .rdp-advanced-settings { display: block; padding-top: 10px; }
 .rdp-advanced-heading { margin-bottom: 8px; color: #bfdbfe; font-size: 13px; font-weight: 600; }
 .dialog-actions .rdp-reset-defaults-action { margin-right: auto; }

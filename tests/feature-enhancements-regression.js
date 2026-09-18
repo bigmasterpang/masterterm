@@ -685,6 +685,30 @@ check('Port forwarding persists rules in localStorage, provides stop-to-stopped 
         && app.includes('sidebar-tunnel-refresh-btn')
         && app.includes('已刷新端口转发通道'));
 
+// 57. RDP Context Menu Parity with SSH Menu
+check('RDP tabs context menu provides full item parity with HTML tabs context menu',
+    windowCpp.includes('RdpTabsNewLocalPwsh')
+        && windowCpp.includes('RdpTabsNewLocalPowerShell')
+        && windowCpp.includes('RdpTabsNewLocalCmd')
+        && windowCpp.includes('RdpTabsNewLocalWsl')
+        && windowCpp.includes('RdpTabsNewLocalGitBash')
+        && windowCpp.includes('RdpTabsBatchCommand')
+        && windowCpp.includes('RdpTabsCloseSplit')
+        && windowCpp.includes('!item.disabled')
+        && windowCpp.includes('batch-command')
+        && windowCpp.includes('new-local-pwsh'));
+
+// 58. SSH Jump Server (ProxyJump) Enable/Disable Toggle
+check('SSH Jump Server configuration includes enable/disable toggle with persistent settings',
+    html.includes('id="server-proxy-enabled"')
+        && html.includes('id="jump-server-body"')
+        && css.includes('.jump-server-enable-label')
+        && css.includes('.jump-server-grid.disabled')
+        && app.includes('proxyJumpEnabled')
+        && app.includes('#server-proxy-enabled')
+        && backendCpp.includes('proxyJumpEnabled')
+        && backendCpp.includes('effectiveProxyJump()'));
+
 if (failures) {
     console.log(failures + ' check(s) failed');
     process.exit(1);
