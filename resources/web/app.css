@@ -3066,6 +3066,38 @@ html[data-theme="blue"] .update-footer button.primary {
   color: #f1f5f9;
   font-size: 12px;
 }
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 4px;
+  background: #1e293b;
+  border: 1px solid #334155;
+  color: #cbd5e1;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.icon-button:hover {
+  background: #334155;
+  border-color: #475569;
+  color: #f1f5f9;
+}
+.icon-button svg {
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+.icon-button.refreshing svg {
+  animation: spin-refresh 0.6s linear;
+}
+@keyframes spin-refresh {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
 .tunnel-add-button {
   height: 28px;
   padding: 0 10px;
@@ -3205,6 +3237,42 @@ html[data-theme="blue"] .update-footer button.primary {
 }
 .tunnel-stop-btn:hover {
   background: #dc2626;
+  color: #fff;
+}
+.tunnel-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.tunnel-start-btn {
+  height: 22px;
+  padding: 0 8px;
+  font-size: 11px;
+  border-radius: 3px;
+  border: 1px solid #16a34a;
+  background: rgba(22, 163, 74, 0.12);
+  color: #4ade80;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.tunnel-start-btn:hover {
+  background: #16a34a;
+  color: #fff;
+}
+.tunnel-delete-btn {
+  height: 22px;
+  padding: 0 8px;
+  font-size: 11px;
+  border-radius: 3px;
+  border: 1px solid #64748b;
+  background: rgba(100, 116, 139, 0.12);
+  color: #94a3b8;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.tunnel-delete-btn:hover {
+  background: #dc2626;
+  border-color: #dc2626;
   color: #fff;
 }
 .tunnels-empty {
@@ -3513,6 +3581,49 @@ html[data-theme="light"] .cloud-guest-form input {
   border-color: #cbd5e1;
   color: #1e293b;
 }
+html[data-theme="light"] .snippet-category-badge {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-color: #bfdbfe;
+}
+html[data-theme="light"] .icon-button {
+  background: #ffffff;
+  border-color: #cbd5e1;
+  color: #475569;
+}
+html[data-theme="light"] .icon-button:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+  color: #1e293b;
+}
+html[data-theme="light"] .tunnel-start-btn {
+  border-color: #22c55e;
+  background: #dcfce7;
+  color: #15803d;
+}
+html[data-theme="light"] .tunnel-start-btn:hover {
+  background: #22c55e;
+  color: #fff;
+}
+html[data-theme="light"] .tunnel-delete-btn {
+  border-color: #cbd5e1;
+  background: #f1f5f9;
+  color: #64748b;
+}
+html[data-theme="light"] .tunnel-delete-btn:hover {
+  background: #ef4444;
+  border-color: #ef4444;
+  color: #fff;
+}
+html[data-theme="light"] .tunnel-stop-btn {
+  border-color: #ef4444;
+  background: #fee2e2;
+  color: #b91c1c;
+}
+html[data-theme="light"] .tunnel-stop-btn:hover {
+  background: #ef4444;
+  color: #fff;
+}
 
 html[data-theme="blue"] .snippets-panel-body,
 html[data-theme="blue"] .tunnels-panel-body,
@@ -3534,6 +3645,40 @@ html[data-theme="blue"] .snippet-code {
   background: #04101e;
   color: #7dd3fc;
   border-color: #13385e;
+}
+html[data-theme="blue"] .snippet-category-badge {
+  background: #0b2a4a;
+  color: #38bdf8;
+  border-color: #1e5a8a;
+}
+html[data-theme="blue"] .icon-button {
+  background: #0a2947;
+  border-color: #1e476d;
+  color: #94a3b8;
+}
+html[data-theme="blue"] .icon-button:hover {
+  background: #10385c;
+  border-color: #2b6192;
+  color: #e2e8f0;
+}
+html[data-theme="blue"] .tunnel-start-btn {
+  border-color: #16a34a;
+  background: rgba(22, 163, 74, 0.2);
+  color: #4ade80;
+}
+html[data-theme="blue"] .tunnel-start-btn:hover {
+  background: #16a34a;
+  color: #fff;
+}
+html[data-theme="blue"] .tunnel-delete-btn {
+  border-color: #1e476d;
+  background: rgba(15, 23, 42, 0.6);
+  color: #94a3b8;
+}
+html[data-theme="blue"] .tunnel-delete-btn:hover {
+  background: #dc2626;
+  border-color: #dc2626;
+  color: #fff;
 }
 
 

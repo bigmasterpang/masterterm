@@ -658,6 +658,33 @@ check('RDP sessions auto-hide bottom status bar and provide hover preview card',
         && app.includes('#rdp-tab-hover-card')
         && hostCpp.includes('#rdp-tab-hover-card:not([hidden])'));
 
+// 54. Terminal Tabs Context Menu RDP Delegation & Direct RDP Creation
+check('Terminal tabs context menu delegates to native Win32 popup menu in RDP mode and exposes new-rdp option',
+    html.includes('data-action="new-rdp"')
+        && app.includes('post("session.rdpTabsContextMenu"')
+        && app.includes('message.event === "app.nativeTabsContextAction"')
+        && app.includes('handleTerminalTabsAction')
+        && backendCpp.includes('"session.rdpTabsContextMenu"')
+        && windowCpp.includes('showRdpTabsContextMenu')
+        && windowCpp.includes('RdpTabsNewRdp')
+        && windowCpp.includes('app.nativeTabsContextAction'));
+
+// 55. Snippet Category Badge Light and Blue Theme Adaptation
+check('Snippet category badges properly adapt background and borders in light and blue themes',
+    css.includes('html[data-theme="light"] .snippet-category-badge')
+        && css.includes('html[data-theme="blue"] .snippet-category-badge'));
+
+// 56. Port Forwarding Persistence, Stop-to-Stopped Lifecycle, and Refresh Button
+check('Port forwarding persists rules in localStorage, provides stop-to-stopped lifecycle with start/delete, and refresh animation',
+    app.includes('masterterm.savedTunnels')
+        && app.includes('tunnel-start-btn')
+        && app.includes('tunnel-delete-btn')
+        && css.includes('.tunnel-start-btn')
+        && css.includes('.tunnel-delete-btn')
+        && css.includes('.icon-button.refreshing svg')
+        && app.includes('sidebar-tunnel-refresh-btn')
+        && app.includes('已刷新端口转发通道'));
+
 if (failures) {
     console.log(failures + ' check(s) failed');
     process.exit(1);

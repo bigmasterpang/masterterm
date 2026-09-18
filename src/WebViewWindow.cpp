@@ -1104,6 +1104,10 @@ bool WebViewWindow::create(HINSTANCE instance, int showCommand)
         [this](const std::string &sessionId, int x, int y) {
             showRdpContextMenu(sessionId, x, y);
         });
+    m_backend->setRdpTabsContextMenuHandler(
+        [this](int x, int y, bool canCloseSplit) {
+            showRdpTabsContextMenu(x, y, canCloseSplit);
+        });
     m_backend->setRdpFullscreenHandler(
         [this](const std::string &sessionId, bool enabled) {
             setRdpFullscreen(sessionId, enabled);
@@ -4231,4 +4235,44 @@ void WebViewWindow::showRdpContextMenu(
         L"{\"event\":\"rdp.contextAction\",\"payload\":{\"sessionId\":\""
         + utf8ToWide(sessionId)
         + L"\",\"action\":\"" + action + L"\"}}");
+}
+
+void WebViewWindow::showRdpTabsContextMenu(int x, int y, bool canCloseSplit)
+{
+    if (!m_window || !m_host)
+        return;
+    POINT point{x, y};
+    if (!ClientToScreen(m_window, &point))
+        GetCursorPos(&point);
+    std::vector<NativePopupMenuItem> menuItems{
+        {RdpTabsNewLocal, L"打开默认本地终端"},
+        {RdpTabsNewSsh, L"打开 SSH 终端…"},
+        {RdpTabsNewRdp, L"打开远程桌面 (RDP)…"},
+        {0, L"", true},
+        {RdpTabsCloseAll, L"关闭全部"},
+        {RdpTabsCloseSplit, L"关闭分屏", !canCloseSplit},
+        {0, L"", true},
+        {RdpTabsSortName, L"标签按名称排序"},
+        {RdpTabsSortType, L"标签按连接类型排序"}
+    };
+    const UINT command = showNativePopupMenu(point.x, point.y, std::move(menuItems), 210);
+    if (!command)
+        return;
+
+    const wchar_t *action = nullptr;
+    switch (command) {
+    case RdpTabsNewLocal: action = L"new-local"; break;
+    case RdpTabsNewSsh: action = L"new-ssh"; break;
+    case RdpTabsNewRdp: action = L"new-rdp"; break;
+    case RdpTabsCloseAll: action = L"close-all"; break;
+    case RdpTabsCloseSplit: action = L"split-close"; break;
+    case RdpTabsSortName: action = L"sort-name"; break;
+    case RdpTabsSortType: action = L"sort-type"; break;
+    default: break;
+    }
+    if (!action)
+        return;
+    m_host->sendJsonToWebView(
+        std::wstring(L"{\"event\":\"app.nativeTabsContextAction\",\"payload\":{\"action\":\"")
+        + action + L"\"}}");
 }

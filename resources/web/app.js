@@ -49,6 +49,7 @@
   let terminalTabsContextGroup = null;
   let pendingNewTerminalGroup = null;
   let broadcastInputActive = false;
+  let handleTerminalTabsAction = null;
   let renderSnippetsPanel = null;
   let refreshSidebarTunnelSessions = null;
   let refreshTunnelsPanel = null;
@@ -9715,6 +9716,13 @@ temporary,
       }
       return;
     }
+    if (message.event === "app.nativeTabsContextAction") {
+      const action = String(payload.action || message.action || "");
+      if (action && handleTerminalTabsAction) {
+        handleTerminalTabsAction(action, terminalTabsContextGroup);
+      }
+      return;
+    }
     if (message.event === "rdp.fullscreen") {
       rdpFullscreen = Boolean(payload.enabled);
       if (rdpFullscreen && sidebarAutoHide)
@@ -11499,36 +11507,7 @@ temporary,
     terminalTabsContextGroup = null;
     if (wasVisible) clearRdpOverlay();
   };
-  const showTerminalTabsContextMenu = (event, group = null) => {
-    event.preventDefault();
-    event.stopPropagation();
-    terminalTabsContextGroup = group;
-    terminalTabsContextMenu.querySelector('[data-action="split-close"]').disabled = !splitMode;
-    terminalTabsContextMenu.hidden = false;
-    const bounds = terminalTabsContextMenu.getBoundingClientRect();
-    terminalTabsContextMenu.style.left =
-      `${Math.max(8, Math.min(event.clientX, window.innerWidth - bounds.width - 8))}px`;
-    terminalTabsContextMenu.style.top =
-      `${Math.max(8, Math.min(event.clientY, window.innerHeight - bounds.height - 8))}px`;
-  };
-  terminalTabs.addEventListener("contextmenu", event => {
-    if (event.target.closest(".terminal-tab")) return;
-    closeTerminalContextMenu();
-    showTerminalTabsContextMenu(event);
-  });
-  // Split panes own their tab groups outside #terminal-tabs.  Capture the
-  // event so a blank area in either dynamically-created group has the same
-  // management menu as the normal tab strip.
-  document.addEventListener("contextmenu", event => {
-    const group = event.target.closest(".tab-group");
-    if (!group || event.target.closest(".terminal-tab")) return;
-    closeTerminalContextMenu();
-    showTerminalTabsContextMenu(event, group);
-  }, true);
-  terminalTabsContextMenu.addEventListener("click", async event => {
-    const action = event.target.closest("button")?.dataset.action;
-    const group = terminalTabsContextGroup;
-    closeTerminalTabsContextMenu();
+  handleTerminalTabsAction = async (action, group = null) => {
     if (action === "close-all") {
       Promise.all(Array.from(sessions.keys()).map(closeSession));
     } else if (action === "split-close") {
@@ -11569,6 +11548,20 @@ temporary,
         pendingNewTerminalGroup = null;
         reportError(error);
       });
+    } else if (action === "new-rdp") {
+      const profiles = profilesCache.filter(
+        profile => profile.connectionType === "rdp");
+      if (!profiles.length) {
+        showTransientStatus("没有可用的远程桌面 (RDP) 连接。");
+        return;
+      }
+      const choice = await requestChoice(
+        "打开远程桌面 (RDP)", "选择远程桌面配置：",
+        profiles.map(profile => ({
+          value: String(profile.index), label: profile.name || profile.address
+        })));
+      if (choice === null) return;
+      post("session.connect", { index: Number(choice) }).catch(reportError);
     } else if (action === "sort-name") {
       const host = group || terminalTabs;
       const tabs = [...host.querySelectorAll(".terminal-tab")];
@@ -11585,7 +11578,7 @@ temporary,
       showTransientStatus(`已按名称排序（${tabs.length} 个标签）`);
     } else if (action === "sort-type") {
       const host = group || terminalTabs;
-      const order = { ssh: 0, serial: 1, local: 2 };
+      const order = { ssh: 0, serial: 1, local: 2, rdp: 3 };
       const tabs = [...host.querySelectorAll(".terminal-tab")];
       tabs.sort((a, b) => {
         const first = order[sessions.get(a.dataset.sessionId)?.connectionType] ?? 9;
@@ -11595,6 +11588,47 @@ temporary,
       appendTerminalTabs(host, tabs);
       if (splitMode) renderSplit();
       showTransientStatus(`已按连接类型排序（${tabs.length} 个标签）`);
+    }
+  };
+
+  const showTerminalTabsContextMenu = (event, group = null) => {
+    event.preventDefault();
+    event.stopPropagation();
+    terminalTabsContextGroup = group;
+    // 当活动会话为 RDP 时，因原生 Win32 子窗口存在空域拦截，HTML 弹窗无法在外部点击时正常关闭且可能被遮挡。
+    // 此时委托给底层的 Win32 TrackPopupMenuEx 原生菜单，点击外部瞬时关闭且绝无遮挡。
+    if (activeRdpSessionId()) {
+      post("session.rdpTabsContextMenu", {
+        x: Math.round(event.clientX),
+        y: Math.round(event.clientY),
+        canCloseSplit: Boolean(splitMode)
+      }).catch(reportError);
+      return;
+    }
+    terminalTabsContextMenu.querySelector('[data-action="split-close"]').disabled = !splitMode;
+    placeContextMenu(terminalTabsContextMenu, event);
+    notifyRdpLayout(false, false);
+  };
+  terminalTabs.addEventListener("contextmenu", event => {
+    if (event.target.closest(".terminal-tab")) return;
+    closeTerminalContextMenu();
+    showTerminalTabsContextMenu(event);
+  });
+  // Split panes own their tab groups outside #terminal-tabs.  Capture the
+  // event so a blank area in either dynamically-created group has the same
+  // management menu as the normal tab strip.
+  document.addEventListener("contextmenu", event => {
+    const group = event.target.closest(".tab-group");
+    if (!group || event.target.closest(".terminal-tab")) return;
+    closeTerminalContextMenu();
+    showTerminalTabsContextMenu(event, group);
+  }, true);
+  terminalTabsContextMenu.addEventListener("click", async event => {
+    const action = event.target.closest("button")?.dataset.action;
+    const group = terminalTabsContextGroup;
+    closeTerminalTabsContextMenu();
+    if (action) {
+      await handleTerminalTabsAction(action, group);
     }
   });
   document.addEventListener("pointerdown", event => {
@@ -12157,6 +12191,22 @@ temporary,
   };
 
   // --- 2. 侧边栏端口转发面板 (Tunnels Panel) ---
+  const savedTunnelsStorageKey = "masterterm.savedTunnels";
+  const readSavedTunnels = () => {
+    try {
+      const val = JSON.parse(localStorage.getItem(savedTunnelsStorageKey) || "[]");
+      return Array.isArray(val) ? val : [];
+    } catch {
+      return [];
+    }
+  };
+  const saveSavedTunnels = list => {
+    try {
+      localStorage.setItem(savedTunnelsStorageKey, JSON.stringify(list));
+    } catch (err) {
+      console.warn("saveSavedTunnels error:", err);
+    }
+  };
   let sidebarTunnelsCache = [];
 
   refreshSidebarTunnelSessions = () => {
@@ -12199,25 +12249,59 @@ temporary,
     const badgeEl = document.querySelector("#sidebar-tunnel-badge");
     try {
       const tunnels = await post("tunnel.list");
-      sidebarTunnelsCache = Array.isArray(tunnels) ? tunnels : [];
-      const activeCount = sidebarTunnelsCache.filter(t => t.state === "listening" || t.state === "active").length;
+      const runningTunnels = Array.isArray(tunnels) ? tunnels : [];
+      let savedList = readSavedTunnels();
+
+      // 将后端正在运行但不在已保存列表中的通道同步记录
+      runningTunnels.forEach(rt => {
+        const existing = savedList.find(s =>
+          (s.activeTunnelId && (s.activeTunnelId === rt.id || s.activeTunnelId === rt.tunnelId)) ||
+          (s.sessionId === rt.sessionId && s.mode === rt.mode && s.listenPort === rt.listenPort && s.targetPort === rt.targetPort)
+        );
+        if (existing) {
+          existing.activeTunnelId = rt.id || rt.tunnelId;
+          existing.status = "listening";
+        } else {
+          const session = sessions.get(rt.sessionId);
+          const profile = session && profilesByIndex.get(session.profileIndex);
+          savedList.push({
+            id: "tunnel_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7),
+            sessionId: rt.sessionId,
+            sessionName: profile?.name || session?.name || rt.sessionId || "SSH",
+            mode: rt.mode || "local",
+            listenPort: rt.listenPort,
+            targetPort: rt.targetPort,
+            targetHost: rt.targetHost || "127.0.0.1",
+            listenHost: rt.listenHost || "127.0.0.1",
+            activeTunnelId: rt.id || rt.tunnelId,
+            status: "listening"
+          });
+        }
+      });
+
+      // 根据后端运行列表校准每个通道状态
+      savedList.forEach(rule => {
+        const isRunning = runningTunnels.some(rt =>
+          (rule.activeTunnelId && (rt.id === rule.activeTunnelId || rt.tunnelId === rule.activeTunnelId)) ||
+          (rt.sessionId === rule.sessionId && rt.mode === rule.mode && rt.listenPort === rule.listenPort && rt.targetPort === rule.targetPort)
+        );
+        if (!isRunning) {
+          rule.activeTunnelId = null;
+          rule.status = "stopped";
+        }
+      });
+      saveSavedTunnels(savedList);
+
+      const activeCount = savedList.filter(t => t.status === "listening" || t.status === "active").length;
       if (badgeEl) {
         badgeEl.textContent = String(activeCount);
         badgeEl.hidden = activeCount === 0;
       }
       if (!listEl) return;
       listEl.replaceChildren();
-      if (emptyEl) emptyEl.hidden = sidebarTunnelsCache.length > 0;
+      if (emptyEl) emptyEl.hidden = savedList.length > 0;
 
-      const stateMap = {
-        listening: "监听中",
-        active: "活跃",
-        starting: "启动中",
-        stopped: "已停止",
-        failed: "失败"
-      };
-
-      sidebarTunnelsCache.forEach(tunnel => {
+      savedList.forEach((tunnel, ruleIndex) => {
         const card = document.createElement("div");
         card.className = "tunnel-card";
 
@@ -12231,39 +12315,121 @@ temporary,
           ? `[本地] :${tunnel.listenPort} ➔ ${tunnel.targetHost}:${tunnel.targetPort}`
           : `[远端] :${tunnel.listenPort} ➔ ${tunnel.targetHost}:${tunnel.targetPort}`;
 
+        const isRunning = tunnel.status === "listening" || tunnel.status === "active";
         const badge = document.createElement("span");
-        badge.className = `tunnel-badge ${tunnel.state || "listening"}`;
-        badge.textContent = stateMap[tunnel.state] || tunnel.state || "运行中";
+        badge.className = `tunnel-badge ${isRunning ? "listening" : "stopped"}`;
+        badge.textContent = isRunning ? "监听中" : "已停止";
 
         header.append(route, badge);
 
         const meta = document.createElement("div");
         meta.className = "tunnel-meta";
 
-        const session = sessions.get(tunnel.sessionId);
-        const profile = session && profilesByIndex.get(session.profileIndex);
-        const sessionName = profile?.name || session?.name || tunnel.sessionId || "SSH";
+        let sessionName = tunnel.sessionName || "SSH";
+        if (tunnel.sessionId && sessions.has(tunnel.sessionId)) {
+          const s = sessions.get(tunnel.sessionId);
+          const p = s && profilesByIndex.get(s.profileIndex);
+          sessionName = p?.name || s?.name || sessionName;
+        }
         const metaText = document.createElement("span");
         metaText.textContent = `会话: ${sessionName}`;
 
-        const stopBtn = document.createElement("button");
-        stopBtn.type = "button";
-        stopBtn.className = "tunnel-stop-btn";
-        stopBtn.textContent = "停止";
-        stopBtn.addEventListener("click", async () => {
-          stopBtn.disabled = true;
-          try {
-            await post("tunnel.stop", { sessionId: tunnel.sessionId, tunnelId: tunnel.id || tunnel.tunnelId });
-            showTransientStatus("端口转发已停止");
-            await refreshTunnelsPanel();
-          } catch (err) {
-            reportError(err);
-          } finally {
-            stopBtn.disabled = false;
-          }
-        });
+        const actions = document.createElement("div");
+        actions.className = "tunnel-actions";
 
-        meta.append(metaText, stopBtn);
+        if (isRunning) {
+          const stopBtn = document.createElement("button");
+          stopBtn.type = "button";
+          stopBtn.className = "tunnel-stop-btn";
+          stopBtn.textContent = "停止";
+          stopBtn.addEventListener("click", async () => {
+            stopBtn.disabled = true;
+            try {
+              if (tunnel.activeTunnelId && tunnel.sessionId) {
+                await post("tunnel.stop", { sessionId: tunnel.sessionId, tunnelId: tunnel.activeTunnelId });
+              }
+              const currentList = readSavedTunnels();
+              const target = currentList.find(s => s.id === tunnel.id) || currentList[ruleIndex];
+              if (target) {
+                target.activeTunnelId = null;
+                target.status = "stopped";
+                saveSavedTunnels(currentList);
+              }
+              showTransientStatus("端口转发已停止");
+              await refreshTunnelsPanel();
+            } catch (err) {
+              reportError(err);
+            } finally {
+              stopBtn.disabled = false;
+            }
+          });
+          actions.appendChild(stopBtn);
+        } else {
+          const startBtn = document.createElement("button");
+          startBtn.type = "button";
+          startBtn.className = "tunnel-start-btn";
+          startBtn.textContent = "启动";
+          startBtn.addEventListener("click", async () => {
+            startBtn.disabled = true;
+            try {
+              let targetSessionId = tunnel.sessionId;
+              if (!sessions.has(targetSessionId) || sessions.get(targetSessionId)?.state !== "connected") {
+                const connected = connectedSftpSessions();
+                const matched = connected.find(s => {
+                  const p = profilesByIndex.get(s.profileIndex);
+                  return (p?.name && p.name === tunnel.sessionName) || (s.name === tunnel.sessionName);
+                }) || connected[0];
+                if (!matched) {
+                  showTransientStatus("未找到可用的已连接 SSH 会话，请先连接 SSH");
+                  return;
+                }
+                targetSessionId = matched.sessionId;
+              }
+              const result = await post("tunnel.create", {
+                sessionId: targetSessionId,
+                mode: tunnel.mode,
+                listenPort: tunnel.listenPort,
+                targetPort: tunnel.targetPort,
+                targetHost: tunnel.targetHost,
+                listenHost: tunnel.listenHost
+              });
+              const currentList = readSavedTunnels();
+              const target = currentList.find(s => s.id === tunnel.id) || currentList[ruleIndex];
+              if (target) {
+                target.sessionId = targetSessionId;
+                target.activeTunnelId = result?.id || result?.tunnelId || null;
+                target.status = "listening";
+                saveSavedTunnels(currentList);
+              }
+              showTransientStatus(`端口转发已建立：${tunnel.listenPort} ➔ ${tunnel.targetHost}:${tunnel.targetPort}`);
+              await refreshTunnelsPanel();
+            } catch (err) {
+              showTransientStatus(err instanceof Error ? err.message : String(err));
+            } finally {
+              startBtn.disabled = false;
+            }
+          });
+
+          const delBtn = document.createElement("button");
+          delBtn.type = "button";
+          delBtn.className = "tunnel-delete-btn";
+          delBtn.textContent = "删除";
+          delBtn.addEventListener("click", async () => {
+            delBtn.disabled = true;
+            try {
+              const currentList = readSavedTunnels().filter(s => s.id !== tunnel.id);
+              saveSavedTunnels(currentList);
+              showTransientStatus("端口转发规则已删除");
+              await refreshTunnelsPanel();
+            } catch (err) {
+              reportError(err);
+            }
+          });
+
+          actions.append(startBtn, delBtn);
+        }
+
+        meta.append(metaText, actions);
         card.append(header, meta);
         listEl.appendChild(card);
       });
@@ -12299,7 +12465,15 @@ temporary,
       if (formEl) formEl.hidden = true;
     });
 
-    refreshBtn?.addEventListener("click", refreshTunnelsPanel);
+    refreshBtn?.addEventListener("click", async () => {
+      refreshBtn.classList.add("refreshing");
+      try {
+        await refreshTunnelsPanel();
+        showTransientStatus("已刷新端口转发通道");
+      } finally {
+        setTimeout(() => refreshBtn.classList.remove("refreshing"), 600);
+      }
+    });
 
     modeSelect?.addEventListener("change", () => {
       const isRemote = modeSelect.value === "remote";
@@ -12333,7 +12507,7 @@ temporary,
 
       submitBtn.disabled = true;
       try {
-        await post("tunnel.create", {
+        const result = await post("tunnel.create", {
           sessionId,
           mode,
           listenPort,
@@ -12341,6 +12515,24 @@ temporary,
           targetHost,
           listenHost
         });
+        const session = sessions.get(sessionId);
+        const profile = session && profilesByIndex.get(session.profileIndex);
+        const sessionName = profile?.name || session?.name || "SSH";
+        const currentList = readSavedTunnels();
+        currentList.unshift({
+          id: "tunnel_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7),
+          sessionId,
+          sessionName,
+          mode,
+          listenPort,
+          targetPort,
+          targetHost,
+          listenHost,
+          activeTunnelId: result?.id || result?.tunnelId || null,
+          status: "listening"
+        });
+        saveSavedTunnels(currentList);
+
         showTransientStatus(`端口转发已建立：${listenPort} ➔ ${targetHost}:${targetPort}`);
         if (formEl) formEl.hidden = true;
         if (listenPortInput) listenPortInput.value = "";

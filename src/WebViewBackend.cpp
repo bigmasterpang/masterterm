@@ -2452,6 +2452,14 @@ void WebViewBackend::receiveMessage(const std::string &message)
         if (m_rdpContextMenuHandler)
             m_rdpContextMenuHandler(sessionId, x, y);
         sendNativeResult(requestId, NativeJsonDom::Value(true));
+    } else if (method == NativeString("session.rdpTabsContextMenu")) {
+        const int x = NativeJsonDom::integerValue(nativeParams, "x", 0);
+        const int y = NativeJsonDom::integerValue(nativeParams, "y", 0);
+        const bool canCloseSplit = NativeJsonDom::booleanValue(
+            nativeParams, "canCloseSplit", false);
+        if (m_rdpTabsContextMenuHandler)
+            m_rdpTabsContextMenuHandler(x, y, canCloseSplit);
+        sendNativeResult(requestId, NativeJsonDom::Value(true));
     } else if (method == NativeString("session.hostKeyConfirm")) {
         const NativeString sessionId = nativeText(
             NativeJsonDom::stringValue(nativeParams, "sessionId"));

@@ -128,6 +128,8 @@ public:
         std::function<void(bool)> completion)>;
     using RdpContextMenuHandler = std::function<void(
         const std::string &sessionId, int x, int y)>;
+    using RdpTabsContextMenuHandler = std::function<void(
+        int x, int y, bool canCloseSplit)>;
     using RdpFullscreenHandler = std::function<void(
         const std::string &sessionId, bool enabled)>;
     using RdpFullscreenActionHandler = std::function<void(
@@ -149,6 +151,10 @@ public:
     void setRdpContextMenuHandler(RdpContextMenuHandler handler)
     {
         m_rdpContextMenuHandler = std::move(handler);
+    }
+    void setRdpTabsContextMenuHandler(RdpTabsContextMenuHandler handler)
+    {
+        m_rdpTabsContextMenuHandler = std::move(handler);
     }
     void setRdpFullscreenHandler(RdpFullscreenHandler handler)
     {
@@ -354,6 +360,7 @@ bool setSftpTransferPaused(const NativeString &transferId, bool paused);
     RdpAdvancedEditorTransitionHandler
         m_rdpAdvancedEditorTransitionHandler;
     std::function<void(const std::string &, int, int)> m_rdpContextMenuHandler;
+    RdpTabsContextMenuHandler m_rdpTabsContextMenuHandler;
     std::function<void(const std::string &, bool)> m_rdpFullscreenHandler;
     std::function<void(const std::string &, const std::string &)>
         m_rdpFullscreenActionHandler;

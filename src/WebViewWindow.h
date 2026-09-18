@@ -126,6 +126,7 @@ private:
         bool canMoveUp, bool canMoveDown);
     void showExistingConnectionsMenu(
         int x, int y, const std::vector<std::pair<int, std::string>> &items);
+    void showRdpTabsContextMenu(int x, int y, bool canCloseSplit);
     void dismissActiveModal(bool lightDismissOnly = false);
     struct RdpHostedSession;
     RdpHostedSession *findRdpSession(const std::string &sessionId);
@@ -154,6 +155,15 @@ private:
         RdpContextMoveLeft = 204,
         RdpContextMoveRight = 205,
         RdpContextFullscreen = 206,
+    };
+    enum RdpTabsContextCommand {
+        RdpTabsNewLocal = 250,
+        RdpTabsNewSsh = 251,
+        RdpTabsNewRdp = 252,
+        RdpTabsCloseAll = 253,
+        RdpTabsCloseSplit = 254,
+        RdpTabsSortName = 255,
+        RdpTabsSortType = 256,
     };
 public:
     enum ThemeMenuCommand {
