@@ -4,7 +4,7 @@
 
 **极致轻量、现代全能的 Windows 桌面终端工作台与 Linux/DevOps 运维利器**
 
-[![Version](https://img.shields.io/badge/version-v0.1.131-blue.svg)](https://github.com/bigmasterpang/masterterm/releases/tag/v0.1.131)
+[![Version](https://img.shields.io/badge/version-v0.1.132-blue.svg)](https://github.com/bigmasterpang/masterterm/releases/tag/v0.1.132)
 [![Platform](https://img.shields.io/badge/platform-Windows%20x64-0078D6.svg)](https://github.com/bigmasterpang/masterterm)
 [![Architecture](https://img.shields.io/badge/architecture-Win32%20%2B%20WebView2-success.svg)](https://github.com/bigmasterpang/masterterm)
 [![Size](https://img.shields.io/badge/portable%20size-~4.8%20MB-orange.svg)](https://github.com/bigmasterpang/masterterm/releases)
@@ -97,12 +97,12 @@
 
 ## 📥 下载与安装
 
-### 正式发布版本 (v0.1.131)
+### 正式发布版本 (v0.1.132)
 
 | 版本类型 | 文件名称 | 适用场景 | 下载地址 |
 | :--- | :--- | :--- | :--- |
-| **Windows 一键安装包** | `MasterTerm-0.1.131-Setup.exe` (~3.8 MB) | 推荐日常使用，自动配置开始菜单、桌面图标与系统集成 | [下载 Setup.exe](https://github.com/bigmasterpang/masterterm/releases/download/v0.1.131/MasterTerm-0.1.131-Setup.exe) |
-| **绿色便携免安装版** | `MasterTerm-0.1.131-windows-x64.zip` (~4.8 MB) | 解压即用，适合放入 U 盘随身携带或移动办公 | [下载 Portable.zip](https://github.com/bigmasterpang/masterterm/releases/download/v0.1.131/MasterTerm-0.1.131-windows-x64.zip) |
+| **Windows 一键安装包** | `MasterTerm-0.1.132-Setup.exe` (~3.8 MB) | 推荐日常使用，自动配置开始菜单、桌面图标与系统集成 | [下载 Setup.exe](https://github.com/bigmasterpang/masterterm/releases/download/v0.1.132/MasterTerm-0.1.132-Setup.exe) |
+| **绿色便携免安装版** | `MasterTerm-0.1.132-windows-x64.zip` (~4.8 MB) | 解压即用，适合放入 U 盘随身携带或移动办公 | [下载 Portable.zip](https://github.com/bigmasterpang/masterterm/releases/download/v0.1.132/MasterTerm-0.1.132-windows-x64.zip) |
 
 > 镜像加速：若访问 GitHub 较慢，亦可在 [Gitee Releases](https://gitee.com/bigmasterwang/masterterm/releases) 镜像源下载。
 
@@ -164,6 +164,12 @@ MasterTerm-cli.exe --identity "C:\keys\id_rsa" --scp-upload ./app.tar.gz root@10
 
 ## 📋 最近版本更新记录（近 5 次迭代）
 
+### v0.1.132 (2026-09-18)
+- **终端底部状态栏与人机工学优化（彻底解决贴底输入视疲劳）**：在终端视口下方新增 26px 专属状态栏并加入底边缓冲，将打满一屏后的输入行向上垫高约 30px；左侧清晰标注激活会话身份，右侧胶囊化实时展示网络延迟、CPU 趋势、内存、磁盘与网络 I/O；
+- **顶部导航栏大幅瘦身与清爽释放**：右上角复杂指标移至底栏，界面呼吸感大增；
+- **RDP 远程桌面 100% 视口独占（底栏智能隐藏）**：切换至 RDP 时底栏自动隐藏，远程 Windows 任务栏完全无遮挡；
+- **RDP 标签悬浮微卡片（Hover Popover）**：鼠标悬停在 RDP 标签上优雅浮现半透明磨砂卡片，按需展示远程 IP、实时网络延迟、画质模式、远程分辨率与连接类型。
+
 ### v0.1.131 (2026-09-17)
 - **弹窗关闭与失焦防误关交互体验优化**：精细化分流弹窗关闭行为，除快捷跳转 (`Ctrl+P`) 与检查更新保留失焦/点击外部自动关闭外，服务器配置、系统设置、快捷键速查等所有表单弹窗均升级为严格保护模式，防止点击背景误关丢失已输入信息，统一要求用户主动关闭。
 
@@ -178,11 +184,6 @@ MasterTerm-cli.exe --identity "C:\keys\id_rsa" --scp-upload ./app.tar.gz root@10
 - **侧边栏新增三大核心运维面板**：集成常用运维命令库 (`snippets`)、SSH 端口转发中心 (`tunnels`) 与云备份历史 (`cloud`)；
 - **RDP 远程桌面高级设置默认项语义明确化**：针对全屏键盘钩子、剪贴板、音频传递、磁盘重定向等关键参数全面补齐中文行为说明；
 - **跳板机 (Jump Server) 独立端口输入与网关延迟探测**：独立端口输入框与网关延迟探测管线。
-
-### v0.1.127 (2026-09-15)
-- **公益备份服务声明与安全防护全面落地**：官方文档与界面正式明确 `vm.dapang.wang` 公益免费服务性质与使用指南；
-- **普通用户云端备份 3 个配额限制**：服务端与前端双向建立配额拦截与提示，防止恶意刷量占用存储空间；
-- **全链路漏洞防护与安全加固**：增加客户端/服务端 5MB 大包上限拦截防内存 DoS、私钥文件名白名单防 Windows 路径穿越注入，以及服务端 IP 滑动窗口防暴力破解限流。
 
 > 📖 查看完整历史版本记录请参阅 [CHANGELOG.md](CHANGELOG.md)。
 

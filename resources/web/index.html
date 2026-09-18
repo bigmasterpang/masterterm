@@ -199,7 +199,6 @@
 
       <span id="status">正在连接后端…</span>
     </div>
-    <div id="server-metrics" class="server-metrics" aria-live="polite" hidden></div>
   </header>
   <main id="workspace" class="workspace sidebar-workspace">
     <nav id="function-tabs" class="function-tabs" aria-label="功能切换">
@@ -517,6 +516,13 @@
           <div id="terminal-panels" class="terminal-panels">
             <div id="terminal-empty" class="empty">选择服务器以打开终端</div>
           </div>
+          <footer id="terminal-status-bar" class="terminal-status-bar" hidden>
+            <div id="terminal-status-identity" class="terminal-status-identity">
+              <span id="terminal-status-dot" class="terminal-status-dot"></span>
+              <span id="terminal-status-title" class="terminal-status-title"></span>
+            </div>
+            <div id="server-metrics" class="server-metrics" aria-live="polite"></div>
+          </footer>
         </div>
       </div>
     </article>
@@ -992,6 +998,7 @@
     <div class="context-menu-separator"></div>
     <button type="button" data-action="batch-command">批量执行命令…</button>
   </div>
+  <div id="rdp-tab-hover-card" class="rdp-tab-hover-card" role="tooltip" hidden></div>
   <div id="terminal-tabs-context-menu" class="context-menu" role="menu" hidden>
     <button type="button" data-action="new-local">打开默认本地终端</button>
     <button type="button" data-action="new-local-pwsh">PowerShell 7</button>
@@ -1260,7 +1267,7 @@
         <div class="about-brand-row">
           <div class="about-app-icon">🖥️</div>
           <div class="about-brand-text">
-            <div class="about-app-name">MasterTerm <span id="about-dialog-version-badge" class="about-version-badge">v0.1.131</span></div>
+            <div class="about-app-name">MasterTerm <span id="about-dialog-version-badge" class="about-version-badge">v0.1.132</span></div>
             <div class="about-app-subtitle">面向 Windows 的现代化全能桌面终端工作台</div>
           </div>
         </div>

@@ -636,6 +636,23 @@ check('Startup initialization avoids TDZ and provides defense-in-depth safety',
         && app.includes('startupFallbackTimer')
         && html.includes('前端脚本执行异常：'));
 
+// 52. Terminal Bottom Status Bar & Prompt Elevation
+check('Terminal bottom status bar elevates input row and shows session metrics',
+    html.includes('id="terminal-status-bar"')
+        && html.includes('id="terminal-status-identity"')
+        && css.includes('.terminal-status-bar')
+        && css.includes('.terminal-status-identity')
+        && app.includes('terminalStatusBar = document.querySelector("#terminal-status-bar")')
+        && app.includes('terminalStatusBar.hidden = false'));
+
+// 53. RDP Tab Hover Card & Unobstructed Remote Taskbar
+check('RDP sessions auto-hide bottom status bar and provide hover preview card',
+    html.includes('id="rdp-tab-hover-card"')
+        && css.includes('.rdp-tab-hover-card')
+        && app.includes('showRdpTabHover')
+        && app.includes('hideRdpTabHover')
+        && app.includes('rdpTabHoverCard'));
+
 if (failures) {
     console.log(failures + ' check(s) failed');
     process.exit(1);

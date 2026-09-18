@@ -100,6 +100,11 @@
     }, duration);
   };
   const serverMetrics = document.querySelector("#server-metrics");
+  const terminalStatusBar = document.querySelector("#terminal-status-bar");
+  const terminalStatusIdentity = document.querySelector("#terminal-status-identity");
+  const terminalStatusDot = document.querySelector("#terminal-status-dot");
+  const terminalStatusTitle = document.querySelector("#terminal-status-title");
+  const rdpTabHoverCard = document.querySelector("#rdp-tab-hover-card");
   // Measure each session's metric columns once. Values such as network rates
   // change frequently; re-measuring every sample would move the header.
   const serverMetricLayouts = new Map();
@@ -869,29 +874,152 @@
     serverMetrics.hidden = false;
   };
 
+  let rdpTabHoverTimer = null;
+  const hideRdpTabHover = () => {
+    if (rdpTabHoverTimer) {
+      clearTimeout(rdpTabHoverTimer);
+      rdpTabHoverTimer = null;
+    }
+    if (rdpTabHoverCard) {
+      rdpTabHoverCard.hidden = true;
+    }
+  };
+
+  const showRdpTabHover = (tab, sessionId) => {
+    if (rdpTabHoverTimer) clearTimeout(rdpTabHoverTimer);
+    rdpTabHoverTimer = setTimeout(() => {
+      const session = sessions.get(sessionId);
+      if (!session || session.connectionType !== "rdp" || !tab.isConnected || !rdpTabHoverCard) return;
+      const profile = profilesByIndex.get(session.profileIndex) || {};
+      const quality = rdpQualityBySession.get(sessionId) || {};
+      const metrics = session.metrics || {};
+      const networkTypes = {
+        1: "调制解调器", 2: "低速宽带", 3: "卫星",
+        4: "高速宽带", 5: "WAN", 6: "LAN"
+      };
+      const networkType = networkTypes[Number(quality.networkConnectionType)] || "自动";
+      const performanceFlags = Number(quality.performanceFlags);
+      const performance = Number.isFinite(performanceFlags)
+        ? (performanceFlags === 0 || performanceFlags === 384
+          ? "高画质" : `自定义 (${performanceFlags})`)
+        : "等待回读";
+      const resolution = Number(quality.displayWidth) > 0
+          && Number(quality.displayHeight) > 0
+        ? `${quality.displayWidth} × ${quality.displayHeight}` : "等待协商";
+      const latency = Number(metrics.latency);
+      const latencyText = Number.isFinite(latency) && latency >= 0
+        ? `${Math.round(latency)} ms` : "—";
+      const colorDepth = Number(quality.colorDepth) > 0 ? `${quality.colorDepth} 位` : "32 位";
+      const remoteTarget = profile.host ? `${profile.host}${profile.port ? `:${profile.port}` : ""}` : (session.name || "远程桌面");
+
+      rdpTabHoverCard.replaceChildren();
+
+      const header = document.createElement("div");
+      header.className = "rdp-hover-header";
+      const icon = document.createElement("span");
+      icon.className = "rdp-hover-icon";
+      icon.textContent = "🖥️";
+      const title = document.createElement("strong");
+      title.className = "rdp-hover-title";
+      title.textContent = session.displayName || session.name || "远程桌面";
+      const target = document.createElement("span");
+      target.className = "rdp-hover-target";
+      target.textContent = remoteTarget;
+      header.append(icon, title, target);
+
+      const grid = document.createElement("div");
+      grid.className = "rdp-hover-grid";
+      const items = [
+        ["⚡ 延迟", latencyText],
+        ["🎨 画质", performance],
+        ["📐 分辨率", resolution],
+        ["🌐 连接", networkType],
+        ["🔒 色深", colorDepth],
+        ["🔄 刷新", `${quality.fullFrameRefreshCount ?? 0} 次`]
+      ];
+      items.forEach(([label, val]) => {
+        const item = document.createElement("div");
+        item.className = "rdp-hover-item";
+        const lSpan = document.createElement("span");
+        lSpan.className = "rdp-hover-label";
+        lSpan.textContent = label;
+        const vSpan = document.createElement("span");
+        vSpan.className = "rdp-hover-value";
+        vSpan.textContent = val;
+        item.append(lSpan, vSpan);
+        grid.append(item);
+      });
+      rdpTabHoverCard.append(header, grid);
+
+      rdpTabHoverCard.hidden = false;
+      const tabRect = tab.getBoundingClientRect();
+      let left = tabRect.left;
+      let top = tabRect.bottom + 6;
+      const cardWidth = 290;
+      if (left + cardWidth > window.innerWidth - 12) {
+        left = Math.max(12, window.innerWidth - cardWidth - 12);
+      }
+      rdpTabHoverCard.style.left = `${Math.round(left)}px`;
+      rdpTabHoverCard.style.top = `${Math.round(top)}px`;
+    }, 180);
+  };
+
   const renderServerMetrics = () => {
     const session = sessions.get(focusedSessionId) || activeSession;
     if (!session || session.state !== "connected") {
+      if (terminalStatusBar) terminalStatusBar.hidden = true;
       serverMetrics.hidden = true;
       serverMetrics.replaceChildren();
       return;
     }
     if (session.connectionType === "rdp") {
+      if (terminalStatusBar) terminalStatusBar.hidden = true;
       renderRdpServerMetrics(session);
       return;
     }
+    const prevStatusBarHidden = terminalStatusBar ? terminalStatusBar.hidden : true;
+    if (terminalStatusBar) {
+      terminalStatusBar.hidden = false;
+      if (terminalStatusDot) {
+        terminalStatusDot.style.setProperty("--terminal-tab-type-color",
+          connectionTypeColor(session.connectionType));
+      }
+      if (terminalStatusTitle) {
+        terminalStatusTitle.textContent = session.displayName || session.name || "终端";
+      }
+    }
+    if (prevStatusBarHidden && session.scheduleRefit) {
+      session.scheduleRefit();
+    }
     const metrics = session.metrics;
     if (session.connectionType !== "ssh" || !metrics || metrics.state === "waiting") {
-      serverMetrics.hidden = true;
-      serverMetrics.replaceChildren();
+      const typeLabel = session.connectionType === "serial" ? "串口"
+        : (session.shellType ? `本地 (${session.shellType})` : "本地终端");
+      const cols = session.terminal?.cols || 80;
+      const rows = session.terminal?.rows || 24;
+      const values = [
+        ["会话", typeLabel],
+        ["尺寸", `${cols}×${rows}`],
+        ["编码", "UTF-8"]
+      ];
+      if (session.connectionType === "ssh") {
+        values.unshift(["状态", "正在获取监控…"]);
+      }
+      serverMetrics.replaceChildren(...renderServerMetricItems(values));
+      stabilizeServerMetricsLayout(session, values);
+      serverMetrics.hidden = false;
       return;
     }
     if (metrics.state === "unavailable") {
-      const item = document.createElement("span");
-      item.className = "server-metric";
-      item.title = "服务器状态监控进程未能启动。";
-      item.append(document.createTextNode("状态监控不可用"));
-      serverMetrics.replaceChildren(item);
+      const cols = session.terminal?.cols || 80;
+      const rows = session.terminal?.rows || 24;
+      const values = [
+        ["监控", "不可用"],
+        ["尺寸", `${cols}×${rows}`],
+        ["编码", "UTF-8"]
+      ];
+      serverMetrics.replaceChildren(...renderServerMetricItems(values));
+      stabilizeServerMetricsLayout(session, values);
       serverMetrics.hidden = false;
       return;
     }
@@ -6991,6 +7119,7 @@ temporary,
   };
 
   const disposeSession = sessionId => {
+    hideRdpTabHover();
     const session = sessions.get(sessionId);
     if (!session) return;
     clearRdpConnectingStatus(sessionId);
@@ -9272,9 +9401,22 @@ temporary,
       event.stopImmediatePropagation();
     }, true);
 
-    tab.addEventListener("click", () => activateSession(sessionId));
-    tab.addEventListener("contextmenu", event => showTerminalContextMenu(event, sessionId));
+    tab.addEventListener("click", () => {
+      hideRdpTabHover();
+      activateSession(sessionId);
+    });
+    tab.addEventListener("contextmenu", event => {
+      hideRdpTabHover();
+      showTerminalContextMenu(event, sessionId);
+    });
+    tab.addEventListener("mouseenter", () => {
+      if (connectionType === "rdp") showRdpTabHover(tab, sessionId);
+    });
+    tab.addEventListener("mouseleave", () => {
+      if (connectionType === "rdp") hideRdpTabHover();
+    });
     tab.addEventListener("dragstart", event => {
+      hideRdpTabHover();
       event.dataTransfer.effectAllowed = "move";
       event.dataTransfer.setData("application/x-masterterm-terminal-tab", sessionId);
       tab.classList.add("dragging");
@@ -12468,12 +12610,14 @@ temporary,
   window.addEventListener("blur", closeSplitNavContextMenu);
   window.addEventListener("blur", closeTerminalOutputContextMenu);
   window.addEventListener("blur", closeThemeMenu);
+  window.addEventListener("blur", hideRdpTabHover);
   window.addEventListener("resize", closeServerContextMenu);
   window.addEventListener("resize", closeServerViewMenu);
   window.addEventListener("resize", closeTerminalContextMenu);
   window.addEventListener("resize", closeSplitNavContextMenu);
   window.addEventListener("resize", closeTerminalOutputContextMenu);
   window.addEventListener("resize", closeThemeMenu);
+  window.addEventListener("resize", hideRdpTabHover);
   document.addEventListener("keydown", event => {
     if (event.key === "Escape") {
       if (rdpFullscreen && !document.querySelector("dialog[open]"))
@@ -12483,6 +12627,7 @@ temporary,
       closeSplitNavContextMenu();
       closeTerminalOutputContextMenu();
       closeThemeMenu();
+      hideRdpTabHover();
     }
   });
   serverType.addEventListener("change", () => {
