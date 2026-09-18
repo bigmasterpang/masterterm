@@ -4,7 +4,7 @@
 
 **极致轻量、现代全能的 Windows 桌面终端工作台与 Linux/DevOps 运维利器**
 
-[![Version](https://img.shields.io/badge/version-v0.1.132-blue.svg)](https://github.com/bigmasterpang/masterterm/releases/tag/v0.1.132)
+[![Version](https://img.shields.io/badge/version-v0.1.133-blue.svg)](https://github.com/bigmasterpang/masterterm/releases/tag/v0.1.133)
 [![Platform](https://img.shields.io/badge/platform-Windows%20x64-0078D6.svg)](https://github.com/bigmasterpang/masterterm)
 [![Architecture](https://img.shields.io/badge/architecture-Win32%20%2B%20WebView2-success.svg)](https://github.com/bigmasterpang/masterterm)
 [![Size](https://img.shields.io/badge/portable%20size-~4.8%20MB-orange.svg)](https://github.com/bigmasterpang/masterterm/releases)

@@ -875,18 +875,39 @@
   };
 
   let rdpTabHoverTimer = null;
-  const hideRdpTabHover = () => {
+  let rdpTabHoverHideTimer = null;
+  const hideRdpTabHover = (immediate = false) => {
     if (rdpTabHoverTimer) {
       clearTimeout(rdpTabHoverTimer);
       rdpTabHoverTimer = null;
     }
-    if (rdpTabHoverCard) {
-      rdpTabHoverCard.hidden = true;
+    if (rdpTabHoverHideTimer) {
+      clearTimeout(rdpTabHoverHideTimer);
+      rdpTabHoverHideTimer = null;
+    }
+    const doHide = () => {
+      if (rdpTabHoverCard && !rdpTabHoverCard.hidden) {
+        rdpTabHoverCard.hidden = true;
+        notifyRdpLayout(false, true);
+      }
+    };
+    if (immediate) {
+      doHide();
+    } else {
+      rdpTabHoverHideTimer = setTimeout(doHide, 120);
     }
   };
 
   const showRdpTabHover = (tab, sessionId) => {
+    if (rdpTabHoverHideTimer) {
+      clearTimeout(rdpTabHoverHideTimer);
+      rdpTabHoverHideTimer = null;
+    }
     if (rdpTabHoverTimer) clearTimeout(rdpTabHoverTimer);
+    if (tab) {
+      tab.removeAttribute("title");
+      tab.title = "";
+    }
     rdpTabHoverTimer = setTimeout(() => {
       const session = sessions.get(sessionId);
       if (!session || session.connectionType !== "rdp" || !tab.isConnected || !rdpTabHoverCard) return;
@@ -955,14 +976,27 @@
       const tabRect = tab.getBoundingClientRect();
       let left = tabRect.left;
       let top = tabRect.bottom + 6;
-      const cardWidth = 290;
+      const cardWidth = 300;
       if (left + cardWidth > window.innerWidth - 12) {
         left = Math.max(12, window.innerWidth - cardWidth - 12);
       }
       rdpTabHoverCard.style.left = `${Math.round(left)}px`;
       rdpTabHoverCard.style.top = `${Math.round(top)}px`;
-    }, 180);
+      notifyRdpLayout(false, false);
+    }, 120);
   };
+
+  if (rdpTabHoverCard) {
+    rdpTabHoverCard.addEventListener("mouseenter", () => {
+      if (rdpTabHoverHideTimer) {
+        clearTimeout(rdpTabHoverHideTimer);
+        rdpTabHoverHideTimer = null;
+      }
+    });
+    rdpTabHoverCard.addEventListener("mouseleave", () => {
+      hideRdpTabHover(false);
+    });
+  }
 
   const renderServerMetrics = () => {
     const session = sessions.get(focusedSessionId) || activeSession;
@@ -1869,7 +1903,7 @@
     "dialog:not(.rdp-editor-fallback-freeze)",
     "#sidebar-flyout-occlusion", "#sidebar-card-shadow", ".context-menu",
     ".terminal-create-dropdown", "#rdp-fullscreen-bar",
-    "#rdp-fullscreen-menu", "#rdp-quality-panel",
+    "#rdp-fullscreen-menu", "#rdp-quality-panel", "#rdp-tab-hover-card",
     "#rdp-fullscreen-hot-zone", ".rdp-connecting-notice"
   ].join(",");
   const isRdpOverlayMutation = record => {
@@ -3269,7 +3303,8 @@
     if (!session?.rdpDisconnectNotice) return;
     session.rdpDisconnectReason.textContent = reason;
     session.rdpDisconnectNotice.hidden = false;
-    session.tab.title = `${session.displayName} · 已断开 · ${reason}`;
+    session.tab.removeAttribute("title");
+    session.tab.title = "";
 
     if (session.rdpAutoReconnectTimer) {
       clearInterval(session.rdpAutoReconnectTimer);
@@ -3369,7 +3404,8 @@
       rdpAutoReconnectAttemptsByProfile.delete(session.profileIndex);
     }
     session.rdpDisconnectNotice.hidden = true;
-    session.tab.title = `${session.displayName} · ${session.sessionId}`;
+    session.tab.removeAttribute("title");
+    session.tab.title = "";
   };
 
   const saveCardLayout = () => {
@@ -5204,14 +5240,15 @@
   const showRdpConnectingNotice = session => {
     if (!session?.rdpConnectingNotice) return;
     session.rdpConnectingNotice.hidden = false;
-    session.tab.title = `${session.displayName} · 正在连接远程桌面`;
+    session.tab.removeAttribute("title");
+    session.tab.title = "";
   };
 
   const hideRdpConnectingNotice = session => {
     if (!session?.rdpConnectingNotice) return;
     session.rdpConnectingNotice.hidden = true;
-    if (session.rdpDisconnectNotice?.hidden !== false)
-      session.tab.title = `${session.displayName} · ${session.sessionId}`;
+    session.tab.removeAttribute("title");
+    session.tab.title = "";
   };
 
   const applyTransferGridColumns = () => {
@@ -8764,8 +8801,9 @@ temporary,
     tab.className = "terminal-tab" + (broadcastInputActive ? " broadcast-active" : "");
     tab.dataset.state = "connecting";
     tab.dataset.sessionId = sessionId;
-    tab.draggable = true;
-    tab.title = `${displayName} · ${sessionId}`;
+    if (connectionType !== "rdp") {
+      tab.title = `${displayName} · ${sessionId}`;
+    }
     const stateDot = document.createElement("span");
     stateDot.className = "terminal-tab-state";
     tab.dataset.connectionType = connectionType;

@@ -419,6 +419,7 @@ void WebViewHost::queryTerminalBounds(
         L"#rdp-fullscreen-menu:not([hidden]),"
         L"#rdp-quality-panel:not([hidden]),"
         L"#rdp-fullscreen-hot-zone:not([hidden]),"
+        L"#rdp-tab-hover-card:not([hidden]),"
         L".rdp-connecting-notice:not([hidden])')].flatMap(e=>{"
         L"const r=e.getBoundingClientRect();const s=getComputedStyle(e);"
         L"const q=Math.max(0,parseFloat(s.borderTopLeftRadius)||0,"
