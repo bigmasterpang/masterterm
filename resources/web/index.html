@@ -388,28 +388,31 @@
             <div class="tunnel-form-group">
               <label>转发模式</label>
               <select id="sidebar-tunnel-mode">
-                <option value="local">本地转发 (Local: 本机 -> 远程目标)</option>
-                <option value="remote">远端转发 (Remote: 远端 -> 本机/内网)</option>
+                <option value="local">本地转发 (-L) · 远程端口映射到本地 (访问远端服务)</option>
+                <option value="remote">远端转发 (-R) · 本地端口暴露给远端 (共享本地服务)</option>
               </select>
+            </div>
+            <div id="sidebar-tunnel-mode-hint" class="tunnel-mode-hint">
+              在【本机】监听端口，将流量转发至【远程目标】（例如在本地直接访问远程内网服务）
             </div>
             <div class="tunnel-form-row">
               <div class="tunnel-form-col">
-                <label id="sidebar-tunnel-listen-port-label">监听端口</label>
+                <label id="sidebar-tunnel-listen-host-label">监听主机</label>
+                <input id="sidebar-tunnel-listen-host" type="text" value="127.0.0.1" placeholder="127.0.0.1">
+              </div>
+              <div class="tunnel-form-col">
+                <label id="sidebar-tunnel-target-host-label">目标主机</label>
+                <input id="sidebar-tunnel-target-host" type="text" value="127.0.0.1" placeholder="127.0.0.1">
+              </div>
+            </div>
+            <div class="tunnel-form-row">
+              <div class="tunnel-form-col">
+                <label id="sidebar-tunnel-listen-port-label">本地监听端口</label>
                 <input id="sidebar-tunnel-listen-port" type="number" min="1" max="65535" placeholder="例如 8080">
               </div>
               <div class="tunnel-form-col">
-                <label id="sidebar-tunnel-target-port-label">目标端口</label>
+                <label id="sidebar-tunnel-target-port-label">远程目标端口</label>
                 <input id="sidebar-tunnel-target-port" type="number" min="1" max="65535" placeholder="例如 80">
-              </div>
-            </div>
-            <div class="tunnel-form-row">
-              <div class="tunnel-form-col">
-                <label>目标主机</label>
-                <input id="sidebar-tunnel-target-host" type="text" value="127.0.0.1" placeholder="127.0.0.1">
-              </div>
-              <div class="tunnel-form-col">
-                <label>监听主机</label>
-                <input id="sidebar-tunnel-listen-host" type="text" value="127.0.0.1" placeholder="127.0.0.1">
               </div>
             </div>
             <div class="tunnel-form-actions">
@@ -444,6 +447,9 @@
               </button>
               <button id="cloud-sidebar-pull" class="cloud-action-btn" type="button">
                 <svg viewBox="0 0 24 24"><path d="M12 4v12m-5-5l5 5 5-5M5 20h14"/></svg>从云端恢复配置
+              </button>
+              <button id="cloud-sidebar-view-btn" class="cloud-action-btn" type="button" title="查看云端已备份的连接与数据详情">
+                <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>查看备份内容
               </button>
             </div>
             <div class="cloud-history-section">
@@ -592,6 +598,30 @@
     <div class="dialog-actions">
       <span id="cloud-history-status"></span>
       <button id="cloud-history-done" type="button">关闭</button>
+    </div>
+  </dialog>
+  <dialog id="cloud-backup-view-dialog" class="action-dialog cloud-backup-view-dialog">
+    <div class="dialog-title">
+      <strong>云端备份内容详情</strong>
+      <button id="cloud-backup-view-close" type="button" aria-label="关闭">×</button>
+    </div>
+    <div class="cloud-backup-view-body">
+      <div class="cloud-backup-stats-bar">
+        <span class="cloud-stat-badge" id="cloud-view-servers-count">🖥️ 0 个连接</span>
+        <span class="cloud-stat-badge" id="cloud-view-workspaces-count">🗂️ 0 个工作区</span>
+        <span class="cloud-stat-badge" id="cloud-view-history-count">⚡ 0 条历史</span>
+        <span class="cloud-stat-badge" id="cloud-view-time">🕒 尚未同步</span>
+      </div>
+      <div class="cloud-backup-search-row">
+        <input id="cloud-backup-search" type="text" placeholder="搜索备份中的服务器名称、IP 或标签…">
+      </div>
+      <div id="cloud-backup-servers-list" class="cloud-backup-servers-list"></div>
+      <div id="cloud-backup-view-empty" class="cloud-backup-empty" hidden>云端备份中没有连接配置</div>
+    </div>
+    <div class="dialog-actions">
+      <span id="cloud-backup-view-status"></span>
+      <button id="cloud-backup-view-pull-btn" class="primary" type="button">下载此备份并应用到本机</button>
+      <button id="cloud-backup-view-done" type="button">关闭</button>
     </div>
   </dialog>
   <dialog id="batch-command-dialog" class="action-dialog batch-command-dialog">
@@ -901,6 +931,13 @@
           <button id="settings-reset-connection-colors" type="button" class="settings-inline-button">恢复默认标签颜色</button>
           <small>新连接默认按类型显示标签；已有自定义标签仍会保留。</small>
         </fieldset>
+        <fieldset id="shortcuts-settings-group"><legend>快捷键设置与自定义</legend>
+          <div class="shortcuts-settings-header">
+            <small>点击右侧按键后按下任意键盘组合键即可自定义修改；支持恢复单项或全部默认值。</small>
+            <button id="shortcuts-reset-all" type="button" class="settings-inline-button">全部恢复默认值</button>
+          </div>
+          <div id="shortcuts-settings-list" class="shortcuts-settings-list"></div>
+        </fieldset>
         <fieldset><legend>更新</legend>
           <div class="cloud-sync-actions">
             <button id="check-update-now" type="button" class="settings-inline-button">立即检查更新</button>
@@ -932,8 +969,8 @@
         <div class="tunnel-form-title"><strong>新建转发</strong></div>
         <label>SSH 会话<select id="tunnel-session"></select></label>
         <label>转发模式<select id="tunnel-mode">
-          <option value="local">本地转发：本地监听 → 经服务器访问目标</option>
-          <option value="remote">远程转发：服务器监听 → 转发到本地目标</option>
+          <option value="local">本地转发 (-L) · 本地监听 → 经服务器访问目标</option>
+          <option value="remote">远端转发 (-R) · 服务器监听 → 转发到本地目标</option>
         </select></label>
         <label>监听端口<input id="tunnel-listen-port" type="number" min="0" max="65535" placeholder="例如 8080（0 表示自动分配）"></label>
         <label>目标主机<input id="tunnel-target-host" placeholder="例如 127.0.0.1 或 db.example.com"></label>
@@ -1214,28 +1251,28 @@
       <div class="shortcuts-content">
         <div class="shortcuts-group">
           <h4>全局导航</h4>
-          <div class="shortcut-row"><span class="shortcut-desc">快速跳转连接与会话</span><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>P</kbd> / <kbd>K</kbd></span></div>
-          <div class="shortcut-row"><span class="shortcut-desc">快捷键速查中心</span><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>/</kbd></span></div>
-          <div class="shortcut-row"><span class="shortcut-desc">多终端按键实时广播</span><span class="shortcut-keys"><kbd>Alt</kbd>+<kbd>B</kbd></span></div>
-          <div class="shortcut-row"><span class="shortcut-desc">全屏 / 退出全屏</span><span class="shortcut-keys"><kbd>F11</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd></span></div>
-          <div class="shortcut-row"><span class="shortcut-desc">偏好设置</span><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>,</kbd></span></div>
+          <div class="shortcut-row" data-shortcut-id="quickSwitcher"><span class="shortcut-desc">快速跳转连接与会话</span><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>P</kbd> / <kbd>K</kbd></span></div>
+          <div class="shortcut-row" data-shortcut-id="shortcutsHelp"><span class="shortcut-desc">快捷键速查中心</span><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>/</kbd></span></div>
+          <div class="shortcut-row" data-shortcut-id="broadcastInput"><span class="shortcut-desc">多终端按键实时广播</span><span class="shortcut-keys"><kbd>Alt</kbd>+<kbd>B</kbd></span></div>
+          <div class="shortcut-row" data-shortcut-id="toggleFullscreen"><span class="shortcut-desc">全屏 / 退出全屏</span><span class="shortcut-keys"><kbd>F11</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd></span></div>
+          <div class="shortcut-row" data-shortcut-id="openSettings"><span class="shortcut-desc">偏好设置</span><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>,</kbd></span></div>
         </div>
         <div class="shortcuts-group">
           <h4>标签页与分屏</h4>
-          <div class="shortcut-row"><span class="shortcut-desc">下一个标签页</span><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>Tab</kbd></span></div>
-          <div class="shortcut-row"><span class="shortcut-desc">上一个标签页</span><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Tab</kbd></span></div>
-          <div class="shortcut-row"><span class="shortcut-desc">分屏子窗口放大 / 还原</span><span class="shortcut-keys"><kbd>Alt</kbd>+<kbd>M</kbd></span></div>
-          <div class="shortcut-row"><span class="shortcut-desc">关闭当前标签页</span><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>W</kbd></span></div>
+          <div class="shortcut-row" data-shortcut-id="nextTab"><span class="shortcut-desc">下一个标签页</span><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>Tab</kbd></span></div>
+          <div class="shortcut-row" data-shortcut-id="prevTab"><span class="shortcut-desc">上一个标签页</span><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Tab</kbd></span></div>
+          <div class="shortcut-row" data-shortcut-id="splitZoom"><span class="shortcut-desc">分屏子窗口放大 / 还原</span><span class="shortcut-keys"><kbd>Alt</kbd>+<kbd>M</kbd></span></div>
+          <div class="shortcut-row" data-shortcut-id="closeTab"><span class="shortcut-desc">关闭当前标签页</span><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>W</kbd></span></div>
           <div class="shortcut-row"><span class="shortcut-desc">快速切换标签 1 ~ 9</span><span class="shortcut-keys"><kbd>Alt</kbd>+<kbd>1..9</kbd></span></div>
           <div class="shortcut-row"><span class="shortcut-desc">复制 / 重命名标签</span><span class="shortcut-keys">标签栏右键</span></div>
         </div>
         <div class="shortcuts-group">
           <h4>终端交互</h4>
-          <div class="shortcut-row"><span class="shortcut-desc">终端关键词实时搜索</span><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>F</kbd></span></div>
+          <div class="shortcut-row" data-shortcut-id="terminalSearch"><span class="shortcut-desc">终端关键词实时搜索</span><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>F</kbd></span></div>
           <div class="shortcut-row"><span class="shortcut-desc">选中文字自动复制</span><span class="shortcut-keys">划选即复制</span></div>
-          <div class="shortcut-row"><span class="shortcut-desc">复制 / 发送中断 (SIGINT)</span><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>C</kbd></span></div>
-          <div class="shortcut-row"><span class="shortcut-desc">粘贴剪贴板文本</span><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>V</kbd></span></div>
-          <div class="shortcut-row"><span class="shortcut-desc">清屏并重置视口</span><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>L</kbd></span></div>
+          <div class="shortcut-row" data-shortcut-id="copySelection"><span class="shortcut-desc">复制 / 发送中断 (SIGINT)</span><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>C</kbd></span></div>
+          <div class="shortcut-row" data-shortcut-id="pasteClipboard"><span class="shortcut-desc">粘贴剪贴板文本</span><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>V</kbd></span></div>
+          <div class="shortcut-row" data-shortcut-id="clearTerminal"><span class="shortcut-desc">清屏并重置视口</span><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>L</kbd></span></div>
           <div class="shortcut-row"><span class="shortcut-desc">命令行换行 (CSI-u)</span><span class="shortcut-keys"><kbd>Shift</kbd>+<kbd>Enter</kbd></span></div>
         </div>
         <div class="shortcuts-group">
@@ -1257,6 +1294,10 @@
       </div>
       <div class="shortcuts-footer">
         <span>按 <kbd>Esc</kbd> 或点击外部任意区域退出</span>
+        <div class="shortcuts-footer-actions">
+          <button id="shortcuts-dialog-edit-btn" type="button" class="shortcuts-footer-btn">⚙️ 自定义快捷键</button>
+          <button id="shortcuts-dialog-reset-btn" type="button" class="shortcuts-footer-btn">↺ 恢复默认快捷键</button>
+        </div>
       </div>
     </div>
   </dialog>

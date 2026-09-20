@@ -3707,4 +3707,240 @@ html[data-theme="blue"] .tunnel-delete-btn:hover {
   color: #fff;
 }
 
+/* 端口转发模式提示 */
+.tunnel-mode-hint {
+  font-size: 11px;
+  line-height: 1.4;
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.08);
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  border-radius: 4px;
+  padding: 5px 8px;
+  margin-top: -2px;
+  margin-bottom: 2px;
+}
+html[data-theme="light"] .tunnel-mode-hint {
+  background: rgba(2, 132, 199, 0.08);
+  border-color: rgba(2, 132, 199, 0.2);
+  color: #0284c7;
+}
+
+/* 云端备份内容查看弹窗 */
+.cloud-backup-view-dialog {
+  width: 640px;
+  max-width: 90vw;
+  max-height: 85vh;
+}
+.cloud-backup-view-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 280px;
+  max-height: 60vh;
+  overflow: hidden;
+}
+.cloud-backup-stats-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid #334155;
+  border-radius: 6px;
+}
+.cloud-stat-badge {
+  font-size: 12px;
+  color: #94a3b8;
+  font-weight: 500;
+}
+.cloud-backup-search-row input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 10px;
+  font-size: 12px;
+  border-radius: 4px;
+  border: 1px solid #334155;
+  background: #0f172a;
+  color: #e2e8f0;
+}
+.cloud-backup-servers-list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 380px;
+  padding-right: 4px;
+}
+.cloud-backup-server-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  background: #172033;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  font-size: 12px;
+}
+.cloud-backup-server-item:hover {
+  border-color: #475569;
+}
+.cloud-backup-server-name {
+  font-weight: 600;
+  color: #f1f5f9;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.cloud-backup-server-proto {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: #2563eb;
+  color: #fff;
+  text-transform: uppercase;
+}
+.cloud-backup-server-host {
+  color: #94a3b8;
+  font-size: 11px;
+}
+.cloud-backup-server-group {
+  color: #64748b;
+  font-size: 11px;
+}
+.cloud-backup-empty {
+  text-align: center;
+  color: #64748b;
+  padding: 30px 0;
+  font-size: 12px;
+}
+
+/* 快捷键设置与自定义 */
+#shortcuts-settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.shortcuts-settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.shortcuts-settings-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 260px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.shortcut-setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid #334155;
+  border-radius: 5px;
+  font-size: 12px;
+}
+.shortcut-setting-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.shortcut-setting-desc {
+  font-weight: 500;
+  color: #e2e8f0;
+}
+.shortcut-setting-category {
+  font-size: 10px;
+  color: #64748b;
+}
+.shortcut-setting-ctrls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.shortcut-key-btn {
+  padding: 3px 8px;
+  font-size: 11px;
+  font-family: inherit;
+  font-weight: 600;
+  background: #1e293b;
+  border: 1px solid #475569;
+  border-radius: 4px;
+  color: #38bdf8;
+  cursor: pointer;
+  min-width: 80px;
+  text-align: center;
+  transition: all 0.15s;
+}
+.shortcut-key-btn:hover {
+  background: #334155;
+  border-color: #38bdf8;
+}
+.shortcut-key-btn.recording {
+  background: #dc2626 !important;
+  border-color: #ef4444 !important;
+  color: #fff !important;
+  animation: pulseRecording 1s infinite alternate;
+}
+@keyframes pulseRecording {
+  from { opacity: 0.8; }
+  to { opacity: 1; }
+}
+.shortcut-reset-item-btn {
+  background: none;
+  border: 1px solid #334155;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 3px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  transition: all 0.15s;
+}
+.shortcut-reset-item-btn:hover {
+  background: #334155;
+  color: #f1f5f9;
+}
+.shortcuts-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+}
+.shortcuts-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.shortcuts-footer-btn {
+  padding: 3px 8px;
+  font-size: 11px;
+  border-radius: 4px;
+  border: 1px solid #334155;
+  background: #1e293b;
+  color: #cbd5e1;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.shortcuts-footer-btn:hover {
+  background: #334155;
+  color: #fff;
+}
+.shortcut-custom-tag {
+  font-size: 10px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: #0284c7;
+  color: #fff;
+  margin-left: 4px;
+  font-weight: normal;
+}
+
+
 

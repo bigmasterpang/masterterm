@@ -709,6 +709,50 @@ check('SSH Jump Server configuration includes enable/disable toggle with persist
         && backendCpp.includes('proxyJumpEnabled')
         && backendCpp.includes('effectiveProxyJump()'));
 
+// 59. Terminal Tab Dragging & Reordering
+check('Terminal tab element enables draggable property for manual reordering and moving',
+    app.includes('tab.draggable = true;')
+        && app.includes('dragstart')
+        && app.includes('dragover')
+        && app.includes('drop'));
+
+// 60. Cloud Backup Viewer & Snapshot Parsing
+check('Cloud backup history parses snapshots correctly and provides backup details viewer',
+    html.includes('id="cloud-backup-view-dialog"')
+        && html.includes('id="cloud-sidebar-view-btn"')
+        && html.includes('id="cloud-backup-servers-list"')
+        && css.includes('.cloud-backup-view-dialog')
+        && css.includes('.cloud-backup-server-item')
+        && app.includes('Array.isArray(result?.snapshots) ? result.snapshots')
+        && app.includes('openCloudBackupViewer')
+        && app.includes('cloud-backup-view-pull-btn'));
+
+// 61. Port Forwarding Grid Alignment & Clear Route Terminology
+check('Port forwarding aligns listen host/port in left column and target host/port in right column with clear mode hints',
+    html.includes('id="sidebar-tunnel-mode-hint"')
+        && html.includes('本地转发 (-L)')
+        && html.includes('远端转发 (-R)')
+        && css.includes('.tunnel-mode-hint')
+        && app.includes('[本地转发 -L]')
+        && app.includes('[远端转发 -R]')
+        && app.includes('sidebar-tunnel-mode-hint'));
+
+// 62. Customizable Shortcuts & Restore Defaults
+check('Custom shortcuts manager supports recording, reset per item, all reset, and hotkey synchronization',
+    html.includes('id="shortcuts-settings-group"')
+        && html.includes('id="shortcuts-reset-all"')
+        && html.includes('id="shortcuts-dialog-edit-btn"')
+        && html.includes('id="shortcuts-dialog-reset-btn"')
+        && css.includes('.shortcut-key-btn')
+        && css.includes('.shortcut-key-btn.recording')
+        && css.includes('.shortcut-custom-tag')
+        && app.includes('SHORTCUT_DEFINITIONS')
+        && app.includes('masterterm.customShortcuts')
+        && app.includes('matchShortcut')
+        && app.includes('renderShortcutsSettings')
+        && app.includes('resetAllShortcuts')
+        && app.includes('renderShortcutsDialogList'));
+
 if (failures) {
     console.log(failures + ' check(s) failed');
     process.exit(1);

@@ -664,6 +664,215 @@
         "--terminal-tab-type-color",
         connectionTypeColor(tab.dataset.connectionType)));
   };
+
+  // ---- 快捷键自定义与管理系统 ----
+  const SHORTCUT_DEFINITIONS = [
+    { id: "quickSwitcher", name: "快速跳转连接与会话", category: "全局导航", defaultKey: "Ctrl+P", altKeyDefault: "Ctrl+K" },
+    { id: "shortcutsHelp", name: "快捷键速查中心", category: "全局导航", defaultKey: "Ctrl+/", altKeyDefault: "F1" },
+    { id: "broadcastInput", name: "多终端按键广播", category: "全局导航", defaultKey: "Alt+B" },
+    { id: "toggleFullscreen", name: "全屏 / 退出全屏", category: "全局导航", defaultKey: "F11", altKeyDefault: "Ctrl+Shift+F" },
+    { id: "openSettings", name: "偏好设置", category: "全局导航", defaultKey: "Ctrl+," },
+    { id: "nextTab", name: "下一个标签页", category: "标签页与分屏", defaultKey: "Ctrl+Tab" },
+    { id: "prevTab", name: "上一个标签页", category: "标签页与分屏", defaultKey: "Ctrl+Shift+Tab" },
+    { id: "closeTab", name: "关闭当前标签页", category: "标签页与分屏", defaultKey: "Ctrl+W" },
+    { id: "splitZoom", name: "分屏子窗口放大 / 还原", category: "标签页与分屏", defaultKey: "Alt+M", altKeyDefault: "Alt+Z" },
+    { id: "terminalSearch", name: "终端关键词实时搜索", category: "终端交互", defaultKey: "Ctrl+F" },
+    { id: "copySelection", name: "复制终端选中文字", category: "终端交互", defaultKey: "Ctrl+Shift+C" },
+    { id: "pasteClipboard", name: "粘贴剪贴板文本", category: "终端交互", defaultKey: "Ctrl+Shift+V" },
+    { id: "clearTerminal", name: "清屏并重置终端", category: "终端交互", defaultKey: "Ctrl+L" }
+  ];
+
+  let customShortcuts = {};
+  const loadCustomShortcuts = () => {
+    try {
+      const stored = JSON.parse(localStorage.getItem("masterterm.customShortcuts") || "{}");
+      customShortcuts = (stored && typeof stored === "object") ? stored : {};
+    } catch {
+      customShortcuts = {};
+    }
+  };
+  loadCustomShortcuts();
+
+  const saveCustomShortcuts = () => {
+    localStorage.setItem("masterterm.customShortcuts", JSON.stringify(customShortcuts));
+  };
+
+  const getActiveShortcutKey = id => {
+    if (customShortcuts[id]) return customShortcuts[id];
+    const def = SHORTCUT_DEFINITIONS.find(d => d.id === id);
+    return def ? def.defaultKey : "";
+  };
+
+  const normalizeKeyComboStr = combo => {
+    if (!combo) return "";
+    return combo.split("+").map(s => s.trim().toLowerCase()).sort().join("+");
+  };
+
+  const getEventKeyCombo = event => {
+    const parts = [];
+    if (event.ctrlKey || event.metaKey) parts.push("Ctrl");
+    if (event.altKey) parts.push("Alt");
+    if (event.shiftKey) parts.push("Shift");
+
+    let key = event.key;
+    if (!key) return "";
+    if (["Control", "Alt", "Shift", "Meta"].includes(key)) return "";
+
+    if (key === " " || event.code === "Space") key = "Space";
+    else if (key === "," || event.code === "Comma") key = ",";
+    else if (key === "/" || key === "?" || event.code === "Slash") key = "/";
+    else if (key.length === 1) key = key.toUpperCase();
+    else if (key.startsWith("Key") && key.length === 4) key = key.slice(3).toUpperCase();
+
+    if (!parts.includes(key)) parts.push(key);
+    return parts.join("+");
+  };
+
+  const matchShortcut = (event, id) => {
+    const def = SHORTCUT_DEFINITIONS.find(d => d.id === id);
+    if (!def) return false;
+    const currentCombo = getActiveShortcutKey(id);
+    const eventCombo = getEventKeyCombo(event);
+    if (!eventCombo) return false;
+
+    // Fast-path default matching for standard key combinations
+    if (!customShortcuts[id]) {
+      if (id === "quickSwitcher" && (event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey
+          && (event.key.toLowerCase() === "p" || event.key.toLowerCase() === "k")) return true;
+      if (id === "shortcutsHelp" && (((event.ctrlKey || event.metaKey) && (event.key === "/" || event.key === "?") && !event.altKey)
+          || (event.key === "F1" && !event.ctrlKey && !event.altKey && !event.metaKey))) return true;
+      if (id === "closeTab" && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "w" && !event.shiftKey && !event.altKey) return true;
+      if (id === "openSettings" && (event.ctrlKey || event.metaKey) && (event.key === "," || event.code === "Comma") && !event.shiftKey && !event.altKey) return true;
+      if (id === "splitZoom" && event.altKey && (event.key.toLowerCase() === "m" || event.key.toLowerCase() === "z") && !event.ctrlKey && !event.metaKey) return true;
+    }
+
+    if (normalizeKeyComboStr(currentCombo) === normalizeKeyComboStr(eventCombo)) {
+      return true;
+    }
+    if (!customShortcuts[id] && def.altKeyDefault) {
+      if (normalizeKeyComboStr(def.altKeyDefault) === normalizeKeyComboStr(eventCombo)) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  const triggerToggleFullscreen = () => {
+    const session = sessions.get(focusedSessionId) || activeSession;
+    if (session?.connectionType === "rdp") {
+      if (typeof requestRdpFullscreen === "function") {
+        requestRdpFullscreen(!rdpFullscreen).catch(reportError);
+      }
+    } else {
+      if (document.fullscreenElement) {
+        document.exitFullscreen?.().catch(() => {});
+      } else {
+        document.documentElement.requestFullscreen?.().catch(() => {});
+      }
+    }
+  };
+
+  let recordingShortcutId = null;
+
+  const renderShortcutsSettings = () => {
+    const container = document.querySelector("#shortcuts-settings-list");
+    if (!container) return;
+    container.replaceChildren();
+
+    SHORTCUT_DEFINITIONS.forEach(def => {
+      const row = document.createElement("div");
+      row.className = "shortcut-setting-row";
+
+      const info = document.createElement("div");
+      info.className = "shortcut-setting-info";
+
+      const desc = document.createElement("span");
+      desc.className = "shortcut-setting-desc";
+      desc.textContent = def.name;
+
+      const cat = document.createElement("span");
+      cat.className = "shortcut-setting-category";
+      cat.textContent = `${def.category} · 默认: ${def.defaultKey}${def.altKeyDefault ? " / " + def.altKeyDefault : ""}`;
+
+      info.append(desc, cat);
+
+      const ctrls = document.createElement("div");
+      ctrls.className = "shortcut-setting-ctrls";
+
+      const isCustomized = Boolean(customShortcuts[def.id]);
+      const isRecording = recordingShortcutId === def.id;
+
+      const keyBtn = document.createElement("button");
+      keyBtn.type = "button";
+      keyBtn.className = `shortcut-key-btn${isRecording ? " recording" : ""}`;
+      keyBtn.textContent = isRecording
+        ? "按下新按键… (Esc取消)"
+        : (customShortcuts[def.id] || def.defaultKey);
+      keyBtn.title = isRecording ? "请在键盘上按下新组合键" : "点击后按下键盘快捷键进行自定义录制";
+
+      keyBtn.addEventListener("click", () => {
+        if (recordingShortcutId === def.id) {
+          recordingShortcutId = null;
+        } else {
+          recordingShortcutId = def.id;
+        }
+        renderShortcutsSettings();
+      });
+
+      ctrls.appendChild(keyBtn);
+
+      if (isCustomized) {
+        const resetBtn = document.createElement("button");
+        resetBtn.type = "button";
+        resetBtn.className = "shortcut-reset-item-btn";
+        resetBtn.textContent = "↺ 恢复默认";
+        resetBtn.title = "恢复此项为默认快捷键";
+        resetBtn.addEventListener("click", () => {
+          delete customShortcuts[def.id];
+          saveCustomShortcuts();
+          renderShortcutsSettings();
+          renderShortcutsDialogList();
+          showTransientStatus(`已恢复「${def.name}」默认快捷键`);
+        });
+        ctrls.appendChild(resetBtn);
+      }
+
+      row.append(info, ctrls);
+      container.appendChild(row);
+    });
+  };
+
+  const renderShortcutsDialogList = () => {
+    const dialog = document.querySelector("#shortcuts-dialog");
+    if (!dialog) return;
+    dialog.querySelectorAll(".shortcut-row[data-shortcut-id]").forEach(row => {
+      const id = row.dataset.shortcutId;
+      const def = SHORTCUT_DEFINITIONS.find(d => d.id === id);
+      if (!def) return;
+      const keysEl = row.querySelector(".shortcut-keys");
+      if (!keysEl) return;
+      const activeKey = getActiveShortcutKey(id);
+      const isCustomized = Boolean(customShortcuts[id]);
+      let html = activeKey.split("+").map(k => `<kbd>${k}</kbd>`).join("+");
+      if (!isCustomized && def.altKeyDefault) {
+        const altHtml = def.altKeyDefault.split("+").map(k => `<kbd>${k}</kbd>`).join("+");
+        html += ` / ${altHtml}`;
+      }
+      if (isCustomized) {
+        html += ` <span class="shortcut-custom-tag">自定义</span>`;
+      }
+      keysEl.innerHTML = html;
+    });
+  };
+
+  const resetAllShortcuts = () => {
+    customShortcuts = {};
+    saveCustomShortcuts();
+    renderShortcutsSettings();
+    renderShortcutsDialogList();
+    showTransientStatus("所有快捷键已恢复默认值");
+  };
+
   const reportError = error => {
     showTransientStatus(error instanceof Error ? error.message : String(error));
   };
@@ -2503,6 +2712,7 @@
     updateTerminalSettingsPreview();
     if (serverSortMode) serverSortMode.value = appSettings.serverSortMode;
     if (serverGroupMode) serverGroupMode.value = appSettings.serverGroupMode;
+    renderShortcutsSettings();
   };
 
   const cloudSyncStorageKey = "masterterm.cloud";
@@ -8809,6 +9019,7 @@ temporary,
 
     const tab = document.createElement("div");
     tab.className = "terminal-tab" + (broadcastInputActive ? " broadcast-active" : "");
+    tab.draggable = true;
     tab.dataset.state = "connecting";
     tab.dataset.sessionId = sessionId;
     if (connectionType !== "rdp") {
@@ -9181,8 +9392,7 @@ temporary,
         if (bufferInfo.isAtEnd) showCompletion(session);
         return false;
       }
-      if (event.ctrlKey && event.shiftKey && !event.altKey && !event.metaKey
-          && event.key.toLowerCase() === "c") {
+      if (matchShortcut(event, "copySelection")) {
         copyTerminalSelection(session);
         return false;
       }
@@ -9195,26 +9405,48 @@ temporary,
           hideCompletion(session);
         }
       }
-      if (event.ctrlKey && event.shiftKey && !event.altKey && !event.metaKey
-          && event.key.toLowerCase() === "v") {
+      if (matchShortcut(event, "pasteClipboard")) {
         pasteIntoTerminal(session);
         return false;
       }
-      if (event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey
-          && event.key.toLowerCase() === "f") {
+      if (matchShortcut(event, "terminalSearch")) {
         openTerminalSearch(session);
         return false;
       }
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "w" && !event.shiftKey && !event.altKey) {
+      if (matchShortcut(event, "clearTerminal")) {
+        session.terminal?.clear?.();
+        return false;
+      }
+      if (matchShortcut(event, "closeTab")) {
         closeCurrentTab();
         return false;
       }
-      if ((event.ctrlKey || event.metaKey) && (event.key === "," || event.code === "Comma") && !event.shiftKey && !event.altKey) {
+      if (matchShortcut(event, "openSettings")) {
         openSettingsDialog();
         return false;
       }
-      if (event.ctrlKey && event.key === "Tab") {
-        cycleTab(!event.shiftKey);
+      if (matchShortcut(event, "prevTab")) {
+        cycleTab(false);
+        return false;
+      }
+      if (matchShortcut(event, "nextTab")) {
+        cycleTab(true);
+        return false;
+      }
+      if (matchShortcut(event, "quickSwitcher")) {
+        toggleQuickSwitcher();
+        return false;
+      }
+      if (matchShortcut(event, "shortcutsHelp")) {
+        toggleShortcutsDialog();
+        return false;
+      }
+      if (matchShortcut(event, "broadcastInput")) {
+        toggleBroadcastInput();
+        return false;
+      }
+      if (matchShortcut(event, "toggleFullscreen")) {
+        triggerToggleFullscreen();
         return false;
       }
       if (event.altKey && !event.ctrlKey && !event.shiftKey && !event.metaKey
@@ -9222,8 +9454,7 @@ temporary,
         switchToTabByIndex(parseInt(event.key, 10));
         return false;
       }
-      if (event.altKey && !event.ctrlKey && !event.metaKey
-          && (event.key.toLowerCase() === "m" || event.key.toLowerCase() === "z")) {
+      if (matchShortcut(event, "splitZoom")) {
         if (splitMode) {
           toggleSplitZoom();
           return false;
@@ -10888,40 +11119,63 @@ temporary,
   // capture-phase fallback so no document region can expose Chromium's menu.
   document.addEventListener("contextmenu", event => event.preventDefault(), true);
   window.addEventListener("keydown", event => {
-    if ((event.ctrlKey || event.metaKey) && (event.key.toLowerCase() === "p" || event.key.toLowerCase() === "k") && !event.shiftKey && !event.altKey) {
+    if (recordingShortcutId) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (event.key === "Escape") {
+        recordingShortcutId = null;
+        renderShortcutsSettings();
+        return;
+      }
+      const combo = getEventKeyCombo(event);
+      if (!combo) return;
+
+      const def = SHORTCUT_DEFINITIONS.find(d => d.id === recordingShortcutId);
+      if (def) {
+        customShortcuts[recordingShortcutId] = combo;
+        saveCustomShortcuts();
+        showTransientStatus(`「${def.name}」快捷键已设为 ${combo}`);
+      }
+      recordingShortcutId = null;
+      renderShortcutsSettings();
+      renderShortcutsDialogList();
+      return;
+    }
+
+    if (matchShortcut(event, "quickSwitcher")) {
       event.preventDefault();
       event.stopImmediatePropagation();
       toggleQuickSwitcher();
       return;
     }
-    if ((event.ctrlKey || event.metaKey) && (event.key === "/" || event.key === "?") && !event.altKey) {
+    if (matchShortcut(event, "shortcutsHelp")) {
       event.preventDefault();
       event.stopImmediatePropagation();
       toggleShortcutsDialog();
       return;
     }
-    if (event.key === "F1" && !event.ctrlKey && !event.altKey && !event.metaKey) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      toggleShortcutsDialog();
-      return;
-    }
-    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "w" && !event.shiftKey && !event.altKey) {
+    if (matchShortcut(event, "closeTab")) {
       event.preventDefault();
       event.stopImmediatePropagation();
       closeCurrentTab();
       return;
     }
-    if ((event.ctrlKey || event.metaKey) && (event.key === "," || event.code === "Comma") && !event.shiftKey && !event.altKey) {
+    if (matchShortcut(event, "openSettings")) {
       event.preventDefault();
       event.stopImmediatePropagation();
       openSettingsDialog();
       return;
     }
-    if (event.ctrlKey && event.key === "Tab") {
+    if (matchShortcut(event, "prevTab")) {
       event.preventDefault();
       event.stopImmediatePropagation();
-      cycleTab(!event.shiftKey);
+      cycleTab(false);
+      return;
+    }
+    if (matchShortcut(event, "nextTab")) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      cycleTab(true);
       return;
     }
     if (event.altKey && !event.ctrlKey && !event.shiftKey && !event.metaKey
@@ -10931,7 +11185,7 @@ temporary,
       switchToTabByIndex(parseInt(event.key, 10));
       return;
     }
-    if (event.altKey && (event.key.toLowerCase() === "m" || event.key.toLowerCase() === "z") && !event.ctrlKey && !event.metaKey) {
+    if (matchShortcut(event, "splitZoom")) {
       if (splitMode) {
         event.preventDefault();
         event.stopImmediatePropagation();
@@ -10939,7 +11193,7 @@ temporary,
         return;
       }
     }
-    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f" && !event.shiftKey && !event.altKey) {
+    if (matchShortcut(event, "terminalSearch")) {
       if (activeSession && activeSession.connectionType !== "rdp") {
         event.preventDefault();
         event.stopImmediatePropagation();
@@ -10947,10 +11201,16 @@ temporary,
         return;
       }
     }
-    if (event.altKey && event.key.toLowerCase() === "b" && !event.ctrlKey && !event.metaKey) {
+    if (matchShortcut(event, "broadcastInput")) {
       event.preventDefault();
       event.stopImmediatePropagation();
       toggleBroadcastInput();
+      return;
+    }
+    if (matchShortcut(event, "toggleFullscreen")) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      triggerToggleFullscreen();
       return;
     }
     if (event.code === "Space" && event.ctrlKey && !event.shiftKey && !event.altKey
@@ -12321,8 +12581,8 @@ temporary,
         route.className = "tunnel-route";
         const isLocal = tunnel.mode === "local";
         route.textContent = isLocal
-          ? `[本地] :${tunnel.listenPort} ➔ ${tunnel.targetHost}:${tunnel.targetPort}`
-          : `[远端] :${tunnel.listenPort} ➔ ${tunnel.targetHost}:${tunnel.targetPort}`;
+          ? `[本地转发 -L] 本机 :${tunnel.listenPort} ➔ 远程 ${tunnel.targetHost}:${tunnel.targetPort}`
+          : `[远端转发 -R] 远端 :${tunnel.listenPort} ➔ 本机 ${tunnel.targetHost}:${tunnel.targetPort}`;
 
         const isRunning = tunnel.status === "listening" || tunnel.status === "active";
         const badge = document.createElement("span");
@@ -12410,7 +12670,9 @@ temporary,
                 target.status = "listening";
                 saveSavedTunnels(currentList);
               }
-              showTransientStatus(`端口转发已建立：${tunnel.listenPort} ➔ ${tunnel.targetHost}:${tunnel.targetPort}`);
+              showTransientStatus(tunnel.mode === "local"
+                ? `本地转发已建立：本机 :${tunnel.listenPort} ➔ 远程 ${tunnel.targetHost}:${tunnel.targetPort}`
+                : `远端转发已建立：远端 :${tunnel.listenPort} ➔ 本机 ${tunnel.targetHost}:${tunnel.targetPort}`);
               await refreshTunnelsPanel();
             } catch (err) {
               showTransientStatus(err instanceof Error ? err.message : String(err));
@@ -12486,8 +12748,18 @@ temporary,
 
     modeSelect?.addEventListener("change", () => {
       const isRemote = modeSelect.value === "remote";
-      if (listenPortLabel) listenPortLabel.textContent = isRemote ? "远程监听端口" : "本地监听端口";
+      const hintEl = document.querySelector("#sidebar-tunnel-mode-hint");
+      if (hintEl) {
+        hintEl.textContent = isRemote
+          ? "在【远端】监听端口，将流量转发至【本机/内网目标】（例如将本地 Web 服务暴露给远端访问）"
+          : "在【本机】监听端口，将流量转发至【远程目标】（例如在本地直接访问远程内网服务）";
+      }
+      if (listenPortLabel) listenPortLabel.textContent = isRemote ? "远端监听端口" : "本地监听端口";
+      const listenHostLabel = document.querySelector("#sidebar-tunnel-listen-host-label");
+      if (listenHostLabel) listenHostLabel.textContent = isRemote ? "远端绑定主机" : "本地绑定主机";
       if (targetPortLabel) targetPortLabel.textContent = isRemote ? "本地目标端口" : "远程目标端口";
+      const targetHostLabel = document.querySelector("#sidebar-tunnel-target-host-label");
+      if (targetHostLabel) targetHostLabel.textContent = isRemote ? "本地目标主机" : "远程目标主机";
     });
 
     submitBtn?.addEventListener("click", async () => {
@@ -12542,7 +12814,9 @@ temporary,
         });
         saveSavedTunnels(currentList);
 
-        showTransientStatus(`端口转发已建立：${listenPort} ➔ ${targetHost}:${targetPort}`);
+        showTransientStatus(mode === "local"
+          ? `本地转发已建立：本机 :${listenPort} ➔ 远程 ${targetHost}:${targetPort}`
+          : `远端转发已建立：远端 :${listenPort} ➔ 本机 ${targetHost}:${targetPort}`);
         if (formEl) formEl.hidden = true;
         if (listenPortInput) listenPortInput.value = "";
         if (targetPortInput) targetPortInput.value = "";
@@ -12557,7 +12831,126 @@ temporary,
     refreshTunnelsPanel();
   };
 
-  // --- 3. 侧边栏云备份面板 (Cloud Sidebar Panel) ---
+  // --- 3. 侧边栏云备份面板与备份内容查看器 ---
+  const openCloudBackupViewer = async () => {
+    const dialog = document.querySelector("#cloud-backup-view-dialog");
+    if (!dialog) return;
+    if (!cloudState.token) {
+      showTransientStatus("请先登录云端账号以查看备份内容");
+      return;
+    }
+    const statusEl = document.querySelector("#cloud-backup-view-status");
+    const listEl = document.querySelector("#cloud-backup-servers-list");
+    const emptyEl = document.querySelector("#cloud-backup-view-empty");
+    const serversCount = document.querySelector("#cloud-view-servers-count");
+    const wsCount = document.querySelector("#cloud-view-workspaces-count");
+    const histCount = document.querySelector("#cloud-view-history-count");
+    const timeEl = document.querySelector("#cloud-view-time");
+    const searchInput = document.querySelector("#cloud-backup-search");
+    const pullBtn = document.querySelector("#cloud-backup-view-pull-btn");
+
+    if (statusEl) statusEl.textContent = "正在从云端获取最新备份数据…";
+    if (listEl) listEl.replaceChildren();
+    if (emptyEl) emptyEl.hidden = true;
+    if (!dialog.open) dialog.showModal();
+
+    try {
+      const url = cloudState.url || cloudSyncDefaultUrl;
+      const result = await post("cloud.pull", { url, token: cloudState.token });
+      if (!result || !result.data) {
+        if (statusEl) statusEl.textContent = "云端暂无已备份的数据";
+        if (emptyEl) emptyEl.hidden = false;
+        return;
+      }
+      if (statusEl) statusEl.textContent = "";
+
+      const data = result.data;
+      const servers = Array.isArray(data.servers) ? data.servers : [];
+      const workspaces = Array.isArray(data.workspaces) ? data.workspaces : [];
+      const history = Array.isArray(data.history) ? data.history : [];
+
+      if (serversCount) serversCount.textContent = `🖥️ ${servers.length} 个连接`;
+      if (wsCount) wsCount.textContent = `🗂️ ${workspaces.length} 个工作区`;
+      if (histCount) histCount.textContent = `⚡ ${history.length} 条历史`;
+      if (timeEl) {
+        timeEl.textContent = result.updatedAt
+          ? `🕒 ${new Date(result.updatedAt).toLocaleString()}`
+          : (cloudState.updatedAt ? `🕒 ${new Date(cloudState.updatedAt).toLocaleString()}` : "🕒 最新备份");
+      }
+
+      const renderServerList = (filterText = "") => {
+        if (!listEl) return;
+        listEl.replaceChildren();
+        const kw = filterText.trim().toLowerCase();
+        const filtered = servers.filter(s => {
+          if (!kw) return true;
+          return (s.name || "").toLowerCase().includes(kw)
+            || (s.address || "").toLowerCase().includes(kw)
+            || (s.tag || "").toLowerCase().includes(kw)
+            || (s.workspace || "").toLowerCase().includes(kw);
+        });
+
+        if (emptyEl) emptyEl.hidden = filtered.length > 0;
+
+        filtered.forEach(s => {
+          const item = document.createElement("div");
+          item.className = "cloud-backup-server-item";
+
+          const nameCol = document.createElement("div");
+          nameCol.className = "cloud-backup-server-name";
+
+          const proto = document.createElement("span");
+          proto.className = "cloud-backup-server-proto";
+          proto.textContent = (s.connectionType || "ssh").toUpperCase();
+
+          const nameText = document.createElement("span");
+          nameText.textContent = s.name || s.address || "未命名连接";
+
+          nameCol.append(proto, nameText);
+
+          const hostCol = document.createElement("div");
+          hostCol.className = "cloud-backup-server-host";
+          hostCol.textContent = s.address ? `${s.address}:${s.port || (s.connectionType === "rdp" ? 3389 : 22)}` : "—";
+
+          const wsCol = document.createElement("div");
+          wsCol.className = "cloud-backup-server-group";
+          wsCol.textContent = s.workspace ? `[${s.workspace}]` : (s.tag ? `#${s.tag}` : "");
+
+          item.append(nameCol, hostCol, wsCol);
+          listEl.appendChild(item);
+        });
+      };
+
+      renderServerList(searchInput ? searchInput.value : "");
+
+      if (searchInput) {
+        searchInput.oninput = () => renderServerList(searchInput.value);
+      }
+
+      if (pullBtn) {
+        pullBtn.onclick = async () => {
+          if (!await requestConfirmation("恢复云端备份到本机", "确定将此云端备份完整应用并覆盖到本机吗？", "立即恢复")) return;
+          try {
+            pullBtn.disabled = true;
+            if (statusEl) statusEl.textContent = "正在应用备份…";
+            await applyCloudData(data);
+            cloudState.updatedAt = result.updatedAt || "";
+            saveCloudState();
+            showTransientStatus("云端备份已成功下载并应用到本机");
+            dialog.close();
+          } catch (err) {
+            if (statusEl) statusEl.textContent = err instanceof Error ? err.message : String(err);
+          } finally {
+            pullBtn.disabled = false;
+          }
+        };
+      }
+    } catch (err) {
+      if (statusEl) statusEl.textContent = err instanceof Error ? err.message : String(err);
+      if (emptyEl) emptyEl.hidden = false;
+    }
+  };
+
   const loadSidebarCloudHistory = async () => {
     const listEl = document.querySelector("#cloud-sidebar-history-list");
     const emptyEl = document.querySelector("#cloud-sidebar-history-empty");
@@ -12565,7 +12958,7 @@ temporary,
     try {
       const url = cloudState.url || cloudSyncDefaultUrl;
       const result = await post("cloud.history", { url, token: cloudState.token });
-      const snapshots = Array.isArray(result) ? result : [];
+      const snapshots = Array.isArray(result?.snapshots) ? result.snapshots : (Array.isArray(result) ? result : []);
       listEl.replaceChildren();
       if (emptyEl) emptyEl.hidden = snapshots.length > 0;
 
@@ -12584,6 +12977,20 @@ temporary,
 
         meta.append(title, date);
 
+        const actions = document.createElement("div");
+        actions.style.display = "flex";
+        actions.style.alignItems = "center";
+        actions.style.gap = "4px";
+
+        const viewBtn = document.createElement("button");
+        viewBtn.type = "button";
+        viewBtn.className = "cloud-btn-link";
+        viewBtn.textContent = "查看";
+        viewBtn.title = "查看云端备份数据详情";
+        viewBtn.addEventListener("click", () => {
+          openCloudBackupViewer();
+        });
+
         const restoreBtn = document.createElement("button");
         restoreBtn.type = "button";
         restoreBtn.className = "cloud-btn-link";
@@ -12599,7 +13006,8 @@ temporary,
           }
         });
 
-        item.append(meta, restoreBtn);
+        actions.append(viewBtn, restoreBtn);
+        item.append(meta, actions);
         listEl.appendChild(item);
       });
     } catch {
@@ -12694,6 +13102,15 @@ temporary,
 
     pushBtn?.addEventListener("click", cloudPush);
     pullBtn?.addEventListener("click", cloudPull);
+    document.querySelector("#cloud-sidebar-view-btn")?.addEventListener("click", () => {
+      openCloudBackupViewer();
+    });
+    document.querySelector("#cloud-backup-view-close")?.addEventListener("click", () => {
+      document.querySelector("#cloud-backup-view-dialog")?.close();
+    });
+    document.querySelector("#cloud-backup-view-done")?.addEventListener("click", () => {
+      document.querySelector("#cloud-backup-view-dialog")?.close();
+    });
     historyRefreshBtn?.addEventListener("click", loadSidebarCloudHistory);
 
     exportLocalBtn?.addEventListener("click", async () => {
@@ -13584,6 +14001,7 @@ temporary,
   const openShortcutsDialog = () => {
     const dialog = document.querySelector("#shortcuts-dialog");
     if (dialog && !dialog.open) {
+      renderShortcutsDialogList();
       dialog.showModal();
     }
   };
@@ -13606,6 +14024,21 @@ temporary,
     if (!dialog) return;
     document.querySelector("#shortcuts-help-button")?.addEventListener("click", toggleShortcutsDialog);
     document.querySelector("#shortcuts-close-badge")?.addEventListener("click", closeShortcutsDialog);
+    document.querySelector("#shortcuts-dialog-edit-btn")?.addEventListener("click", () => {
+      closeShortcutsDialog();
+      openSettingsDialog();
+      setTimeout(() => {
+        const group = document.querySelector("#shortcuts-settings-group");
+        if (group) group.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 100);
+    });
+    document.querySelector("#shortcuts-dialog-reset-btn")?.addEventListener("click", () => {
+      resetAllShortcuts();
+    });
+    document.querySelector("#shortcuts-reset-all")?.addEventListener("click", () => {
+      resetAllShortcuts();
+    });
+    renderShortcutsDialogList();
   };
   initShortcutsDialog();
 
