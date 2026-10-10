@@ -647,9 +647,15 @@
     if (!value.terminalThemePreset) value.terminalThemePreset = defaultSettings.terminalThemePreset;
     for (const key of ["connectionTypeColorSsh", "connectionTypeColorRdp", "connectionTypeColorSerial"])
       if (!/^#[0-9a-f]{6}$/i.test(String(value[key] || ""))) value[key] = defaultSettings[key];
+    if (!value.updateServerUrl || typeof value.updateServerUrl !== "string" || value.updateServerUrl.includes("ps.dapang.wang"))
+      value.updateServerUrl = defaultSettings.updateServerUrl;
     return value;
   };
+  const rawStoredUpdateUrl = appSettings.updateServerUrl;
   appSettings = normalizeAppSettings(appSettings);
+  if (rawStoredUpdateUrl !== appSettings.updateServerUrl) {
+    try { saveSettings(); } catch {}
+  }
   const connectionTypeColor = connectionType => {
     const colors = {
       ssh: appSettings.connectionTypeColorSsh,
@@ -2724,6 +2730,10 @@
     if (storedCloud && typeof storedCloud === "object")
       cloudState = { ...cloudState, ...storedCloud };
   } catch { /* malformed stored state falls back to defaults */ }
+  if (!cloudState.url || typeof cloudState.url !== "string" || cloudState.url.includes("ps.dapang.wang")) {
+    cloudState.url = cloudSyncDefaultUrl;
+    try { localStorage.setItem(cloudSyncStorageKey, JSON.stringify(cloudState)); } catch {}
+  }
   const cloudSyncUsername = document.querySelector("#cloud-sync-username");
   const cloudSyncPassword = document.querySelector("#cloud-sync-password");
   const cloudRegisterButton = document.querySelector("#cloud-register");
@@ -3454,7 +3464,9 @@
       defaultLocalShell: document.querySelector("#setting-default-local-shell")?.value || defaultSettings.defaultLocalShell,
       localWorkingDir: document.querySelector("#setting-local-working-dir")?.value || defaultSettings.localWorkingDir,
       terminalThemePreset: document.querySelector("#setting-terminal-theme-preset")?.value || defaultSettings.terminalThemePreset,
-      updateServerUrl: appSettings.updateServerUrl || updateServerDefaultUrl,
+      updateServerUrl: (appSettings.updateServerUrl && !appSettings.updateServerUrl.includes("ps.dapang.wang"))
+        ? appSettings.updateServerUrl
+        : updateServerDefaultUrl,
       editorAssociations: appSettings.editorAssociations || {}
     };
     localStorage.setItem("masterterm.settings", JSON.stringify(appSettings));
@@ -9211,7 +9223,6 @@ temporary,
       leaveTimer: 0,
       resizeTimer: 0,
       pendingExit: false,
-      sawTopExit: false,
       reconnectAttempts: 0,
       lastColumns: 0,
       lastRows: 0,
@@ -9294,7 +9305,6 @@ temporary,
     ]);
     const isInteractiveAlternateCommand = command => {
       const normalized = String(command || "").trim().replace(/\s+/g, " ");
-      if (/^(?:(?:sudo\s+)?top)(?:\s|$)/i.test(normalized)) return true;
       const match = normalized.match(/^(?:(?:sudo\s+)?opencode)(?:\s+(.*))?$/i);
       if (!match) return false;
       const args = (match[1] || "").trim();
@@ -9311,7 +9321,6 @@ temporary,
       session.remoteAlternateScreen = false;
       session.fullScreen = false;
       session.pendingExit = false;
-      session.sawTopExit = false;
     };
     const restoreLocalAlternateScreen = () => {
       if (session.leaveTimer) {
@@ -9636,7 +9645,6 @@ temporary,
       if (leavingFullScreen) {
         session.fullScreen = false;
         session.pendingExit = true;
-        session.sawTopExit = false;
       }
       post("session.input", { sessionId, data: inputData }).catch(reportError);
       if (broadcastInputActive) {
@@ -10610,22 +10618,9 @@ temporary,
       session.alternateScreen = false;
       session.fullScreen = false;
       session.pendingExit = false;
-      session.sawTopExit = false;
-    }
-    if (session.connectionType === "ssh" &&
-        /(?:^|[\r\n])top - \d|%Cpu\(s\):|Tasks:\s+\d+\s+total/.test(plain))
-      session.enterAlternateScreen();
-    const topHasRestoredCursor = session.pendingExit &&
-      (text.includes("\x1b[?25h") || text.includes("\x1b[?1l"));
-    if (session.pendingExit) {
-      const exitMarker = text.lastIndexOf("\x1b[?1l");
-      if (exitMarker >= 0) session.sawTopExit = true;
     }
     session.terminal.write(colorizeTerminalOutput(text), () => {
       if (remoteAlternateExited) session.syncAfterRemoteAlternateExit?.();
-      if (!topHasRestoredCursor && !session.sawTopExit) return;
-      if (session.leaveTimer) clearTimeout(session.leaveTimer);
-      session.leaveTimer = setTimeout(session.leaveAlternateScreen, 100);
     });
   };
 

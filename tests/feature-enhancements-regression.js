@@ -753,6 +753,18 @@ check('Custom shortcuts manager supports recording, reset per item, all reset, a
         && app.includes('resetAllShortcuts')
         && app.includes('renderShortcutsDialogList'));
 
+// 63. Legacy Update URL & Cloud URL Sanitization / Auto-migration
+check('Legacy ps.dapang.wang update and cloud URLs are automatically cleaned and migrated to vm.dapang.wang',
+    app.includes('value.updateServerUrl.includes("ps.dapang.wang")')
+        && app.includes('cloudState.url.includes("ps.dapang.wang")')
+        && app.includes('rawStoredUpdateUrl !== appSettings.updateServerUrl'));
+
+// 64. Top Command Native PTY Lifecycle (No synthetic alternate screen hijack)
+check('Top command runs natively on PTY without artificial alternate screen hijacking or prompt swallowing',
+    !app.includes('if (/^(?:(?:sudo\\s+)?top)(?:\\s|$)/i.test(normalized))')
+        && !app.includes('topHasRestoredCursor')
+        && !app.includes('session.sawTopExit'));
+
 if (failures) {
     console.log(failures + ' check(s) failed');
     process.exit(1);
