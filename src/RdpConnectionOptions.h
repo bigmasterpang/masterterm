@@ -8,6 +8,7 @@ struct RdpConnectionOptions
 {
     int colorDepth = -1;             // 16, 24 or 32
     int smartSizing = -1;            // 0/1
+    int desktopScaleFactor = 0;      // 0: default/auto, 100, 125, 150, 175, 200, 250, 300
     int performanceFlags = -1;       // IMsRdpClientAdvancedSettings mask
     int networkConnectionType = -1;  // 1 modem .. 6 LAN
     int desktopBackground = 1;        // 0/1

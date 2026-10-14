@@ -724,6 +724,18 @@
                     <option value="-1">默认 (关闭·原始比例)</option><option value="1">开启</option><option value="0">关闭</option>
                   </select>
                 </label>
+                <label>显示缩放 (DPI)
+                  <select id="server-rdp-desktop-scale">
+                    <option value="0">默认 (跟随系统自适应)</option>
+                    <option value="100">100% (标准无缩放)</option>
+                    <option value="125">125%</option>
+                    <option value="150">150%</option>
+                    <option value="175">175%</option>
+                    <option value="200">200% (高分辨率2倍)</option>
+                    <option value="250">250%</option>
+                    <option value="300">300%</option>
+                  </select>
+                </label>
                 <label>连接速度
                   <select id="server-rdp-network-type">
                     <option value="-1">默认 (自动识别·局域网极速/广域网自适应)</option><option value="1">调制解调器（56 Kbps）</option><option value="2">低速宽带</option><option value="3">卫星</option><option value="4">高速宽带</option><option value="5">WAN</option><option value="6">LAN</option>
@@ -1314,7 +1326,7 @@
         <div class="about-brand-row">
           <div class="about-app-icon">🖥️</div>
           <div class="about-brand-text">
-            <div class="about-app-name">MasterTerm <span id="about-dialog-version-badge" class="about-version-badge">v0.1.137</span></div>
+            <div class="about-app-name">MasterTerm <span id="about-dialog-version-badge" class="about-version-badge">v0.1.138</span></div>
             <div class="about-app-subtitle">面向 Windows 的现代化全能桌面终端工作台</div>
           </div>
         </div>

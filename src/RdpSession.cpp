@@ -631,7 +631,11 @@ RdpSession::~RdpSession()
                 reinterpret_cast<void **>(&oleObject)))
             && oleObject) {
             oleObject->SetClientSite(nullptr);
-            oleObject->Close(OLECLOSE_NOSAVE);
+            short connectedState = 0;
+            if (SUCCEEDED(m_impl->control->get_Connected(&connectedState))
+                && connectedState == 0) {
+                oleObject->Close(OLECLOSE_NOSAVE);
+            }
             oleObject->Release();
         }
     }
@@ -1735,6 +1739,9 @@ void RdpSession::emitState(const std::wstring &state)
             scheduleSurfaceRefresh();
         }
     } else if (state == L"disconnected"
+               || state.rfind(L"disconnected:", 0) == 0
+               || state.rfind(L"conflict:", 0) == 0
+               || state.rfind(L"logoff:", 0) == 0
                || state.rfind(L"error:", 0) == 0) {
         m_connecting = false;
         m_connected = false;
@@ -1783,8 +1790,6 @@ bool RdpSession::create()
                 session->writeLog(L"connect timeout after 30 seconds");
                 session->m_connecting = false;
                 session->emitState(L"error:远程桌面连接超时（30 秒）");
-                if (session->m_impl->control)
-                    session->m_impl->control->Disconnect();
             }
             return 0;
         }
@@ -2040,6 +2045,7 @@ void RdpSession::connect(const std::wstring &host, int port,
     m_surfaceRefreshNeedsDisplayUpdate = false;
     m_displaySettingsSynchronized = false;
     m_quality = RdpQualitySnapshot{};
+    m_quality.desktopScaleFactor = options.desktopScaleFactor;
     m_quality.lastOperation = L"连接参数准备";
     if (m_container)
         ShowWindow(m_container, SW_HIDE);
@@ -2065,30 +2071,62 @@ void RdpSession::connect(const std::wstring &host, int port,
     writeLog(L"  network locality: loopback="
         + std::wstring(m_loopbackConnection ? L"TRUE" : L"FALSE")
         + L" LAN=" + std::wstring(m_lanConnection ? L"TRUE" : L"FALSE"));
-    if (m_lanConnection) {
-        // Frame-buffer redirection is a loopback optimization. It is not a
-        // generic LAN quality switch; applying it to a VMware/PVE peer can
-        // select a different compositor path from the one used by mstsc.
-        IMsRdpExtendedSettingsPtr extendedSettings;
-        if (m_loopbackConnection && SUCCEEDED(control.QueryInterface(
-                IID_IMsRdpExtendedSettings,
-                reinterpret_cast<void **>(&extendedSettings)))
-            && extendedSettings) {
-            VARIANT enabled;
-            VariantInit(&enabled);
-            enabled.vt = VT_BOOL;
-            enabled.boolVal = VARIANT_TRUE;
-            _bstr_t propertyName(L"EnableFrameBufferRedirection");
-            const HRESULT frameBufferResult =
-                extendedSettings->put_Property(propertyName, &enabled);
-            writeLog(L"  loopback: EnableFrameBufferRedirection=TRUE -> 0x"
-                + std::to_wstring(static_cast<unsigned long>(
-                    frameBufferResult)));
-        } else if (m_loopbackConnection) {
-            writeLog(L"  loopback: IMsRdpExtendedSettings QI FAILED");
-        } else {
-            writeLog(L"  LAN: EnableFrameBufferRedirection not enabled (loopback only)");
+
+    IMsRdpExtendedSettingsPtr extendedSettings;
+    if (SUCCEEDED(control.QueryInterface(
+            IID_IMsRdpExtendedSettings,
+            reinterpret_cast<void **>(&extendedSettings)))
+        && extendedSettings) {
+        if (options.desktopScaleFactor >= 100) {
+            VARIANT scale;
+            VariantInit(&scale);
+            scale.vt = VT_UI4;
+            scale.ulVal = static_cast<ULONG>(options.desktopScaleFactor);
+            _bstr_t desktopScaleProp(L"DesktopScaleFactor");
+            const HRESULT desktopScaleResult =
+                extendedSettings->put_Property(desktopScaleProp, &scale);
+            writeLog(L"  DesktopScaleFactor="
+                + std::to_wstring(options.desktopScaleFactor) + L" -> 0x"
+                + std::to_wstring(static_cast<unsigned long>(desktopScaleResult)));
+
+            ULONG deviceScale = 100;
+            if (options.desktopScaleFactor >= 180) {
+                deviceScale = 180;
+            } else if (options.desktopScaleFactor >= 140) {
+                deviceScale = 140;
+            }
+            VARIANT devScale;
+            VariantInit(&devScale);
+            devScale.vt = VT_UI4;
+            devScale.ulVal = deviceScale;
+            _bstr_t deviceScaleProp(L"DeviceScaleFactor");
+            const HRESULT devScaleResult =
+                extendedSettings->put_Property(deviceScaleProp, &devScale);
+            writeLog(L"  DeviceScaleFactor="
+                + std::to_wstring(deviceScale) + L" -> 0x"
+                + std::to_wstring(static_cast<unsigned long>(devScaleResult)));
         }
+        if (m_lanConnection) {
+            // Frame-buffer redirection is a loopback optimization. It is not a
+            // generic LAN quality switch; applying it to a VMware/PVE peer can
+            // select a different compositor path from the one used by mstsc.
+            if (m_loopbackConnection) {
+                VARIANT enabled;
+                VariantInit(&enabled);
+                enabled.vt = VT_BOOL;
+                enabled.boolVal = VARIANT_TRUE;
+                _bstr_t propertyName(L"EnableFrameBufferRedirection");
+                const HRESULT frameBufferResult =
+                    extendedSettings->put_Property(propertyName, &enabled);
+                writeLog(L"  loopback: EnableFrameBufferRedirection=TRUE -> 0x"
+                    + std::to_wstring(static_cast<unsigned long>(
+                        frameBufferResult)));
+            } else {
+                writeLog(L"  LAN: EnableFrameBufferRedirection not enabled (loopback only)");
+            }
+        }
+    } else {
+        writeLog(L"  IMsRdpExtendedSettings: QI FAILED");
     }
     IMsRdpClientNonScriptable3Ptr nonScriptable;
     if (SUCCEEDED(control.QueryInterface(
@@ -2409,14 +2447,11 @@ void RdpSession::connect(const std::wstring &host, int port,
                 settings->put_RedirectPrinters(
                     options.redirectPrinters != 0
                         ? VARIANT_TRUE : VARIANT_FALSE);
-            if (options.autoReconnect >= 0) {
-                settings->put_EnableAutoReconnect(
-                    options.autoReconnect != 0
-                        ? VARIANT_TRUE : VARIANT_FALSE);
-                if (options.autoReconnect != 0)
-                    settings->put_MaxReconnectAttempts(std::clamp(
-                        options.maxReconnectAttempts, 1, 20));
-            }
+            // Disable native mstscax auto-reconnect unconditionally so the
+            // control never enters an internal uncontrolled socket retry loop
+            // or deadlocks the UI thread on disconnect. Frontend manages the
+            // auto-reconnect countdown, retry limits, conflict handling, and cancellation.
+            settings->put_EnableAutoReconnect(VARIANT_FALSE);
             if (port != 3389)
                 settings->put_RDPPort(port);
             if (!password.empty()) {

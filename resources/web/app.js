@@ -305,6 +305,7 @@
   const rdpOptionFields = {
     colorDepth: document.querySelector("#server-rdp-color-depth"),
     smartSizing: document.querySelector("#server-rdp-smart-sizing"),
+    desktopScaleFactor: document.querySelector("#server-rdp-desktop-scale"),
     performanceFlags: document.querySelector("#server-rdp-performance"),
     networkConnectionType: document.querySelector("#server-rdp-network-type"),
     desktopBackground: document.querySelector("#server-rdp-wallpaper"),
@@ -330,7 +331,7 @@
     "cursorSettings"
   ]);
   const defaultRdpOptionValue = key => key === "maxReconnectAttempts"
-    ? 3 : key === "useMultimon" ? 1 : key === "autoReconnect" ? 0 : -1;
+    ? 3 : key === "useMultimon" ? 1 : (key === "autoReconnect" || key === "desktopScaleFactor") ? 0 : -1;
   const serialPortSelect = document.querySelector("#server-serial-port");
   const serialPortRefreshButton = document.querySelector("#server-serial-refresh");
   const serialPortStatus = document.querySelector("#server-serial-status");
@@ -2025,6 +2026,7 @@
     rdpQualityContent.textContent = [
       `色深             ${quality.colorDepth || "等待回读"} 位`,
       `分辨率           ${resolution}`,
+      `显示缩放         ${Number(quality.desktopScaleFactor) > 0 ? quality.desktopScaleFactor + "%" : "跟随系统"}`,
       `SmartSizing      ${boolText(Boolean(quality.smartSizing))}`,
       `性能标志         ${quality.performanceFlags ?? "等待回读"}`,
       `连接类型         ${quality.networkConnectionType || "自动"}`,
@@ -7460,6 +7462,10 @@ temporary,
     if (!session) return Promise.resolve();
     clearRdpConnectingStatus(sessionId);
     clearRdpConnectedStatus(sessionId);
+    if (session.rdpAutoReconnectTimer) {
+      clearInterval(session.rdpAutoReconnectTimer);
+      session.rdpAutoReconnectTimer = 0;
+    }
     session.closing = true;
     const closeRequest = session.connectionType === "rdp"
       ? post("session.rdpClose", { sessionId })
@@ -8200,25 +8206,33 @@ temporary,
   const reconnectSession = async (sessionId, options = {}) => {
     const session = sessions.get(sessionId);
     if (!session) return;
+    if (session.reconnecting || session.closing) return;
     const profile = profilesByIndex.get(session.profileIndex);
     if (!profile) {
       showTransientStatus("连接配置不存在，无法重新连接。");
       return;
     }
-    const wasActive = (activeSession === session);
-    const keepBackground = options.keepBackground ?? (!wasActive);
-    if (session.connectionType === "rdp") {
-      await closeSession(sessionId);
-      await connectProfile(profile, { keepBackground });
-      return;
+    if (session.rdpAutoReconnectTimer) {
+      clearInterval(session.rdpAutoReconnectTimer);
+      session.rdpAutoReconnectTimer = 0;
     }
-    if (session.state !== "closed" && session.state !== "error") return;
+    session.reconnecting = true;
     try {
+      const wasActive = (activeSession === session);
+      const keepBackground = options.keepBackground ?? (!wasActive);
+      if (session.connectionType === "rdp") {
+        await closeSession(sessionId);
+        await connectProfile(profile, { keepBackground });
+        return;
+      }
+      if (session.state !== "closed" && session.state !== "error") return;
       await post("session.close", { sessionId });
       disposeSession(sessionId);
       await connectProfile(profile, { keepBackground });
     } catch (error) {
       reportError(error);
+    } finally {
+      if (session) session.reconnecting = false;
     }
   };
   const moveTerminalTab = (sessionId, direction) => {
@@ -9231,12 +9245,20 @@ temporary,
     };
 
     rdpReconnectButton?.addEventListener("click", () => {
+      if (session.rdpAutoReconnectTimer) {
+        clearInterval(session.rdpAutoReconnectTimer);
+        session.rdpAutoReconnectTimer = 0;
+      }
       if (session.profileIndex >= 0) {
         rdpAutoReconnectAttemptsByProfile.delete(session.profileIndex);
       }
       reconnectSession(sessionId, { keepBackground: false }).catch(reportError);
     });
     rdpCloseNoticeButton?.addEventListener("click", () => {
+      if (session.rdpAutoReconnectTimer) {
+        clearInterval(session.rdpAutoReconnectTimer);
+        session.rdpAutoReconnectTimer = 0;
+      }
       if (session.profileIndex >= 0) {
         rdpAutoReconnectAttemptsByProfile.delete(session.profileIndex);
       }

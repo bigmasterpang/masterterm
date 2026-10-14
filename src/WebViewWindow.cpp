@@ -2983,6 +2983,9 @@ void WebViewWindow::notifyRdpState(
     DiagnosticLog::setSession(sessionId);
     DiagnosticLog::write("rdp-state", sessionId + " " + wideToUtf8(state));
     const bool terminalState = state == L"disconnected"
+        || state.rfind(L"disconnected:", 0) == 0
+        || state.rfind(L"conflict:", 0) == 0
+        || state.rfind(L"logoff:", 0) == 0
         || state.rfind(L"error:", 0) == 0;
     if (terminalState) {
         if (m_rdpFullscreen && m_rdpFullscreenSessionId == sessionId)

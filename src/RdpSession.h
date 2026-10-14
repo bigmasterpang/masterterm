@@ -17,6 +17,7 @@ struct RdpQualitySnapshot {
     int colorDepth = 0;
     int displayWidth = 0;
     int displayHeight = 0;
+    int desktopScaleFactor = 0;
     bool smartSizing = false;
     int performanceFlags = 0;
     int networkConnectionType = 0;

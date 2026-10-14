@@ -808,6 +808,18 @@ void readRdpOptions(
         value, "smartSizing", options.smartSizing);
     if (options.smartSizing < -1 || options.smartSizing > 1)
         options.smartSizing = -1;
+    options.desktopScaleFactor = jsonInteger(
+        value, "desktopScaleFactor", options.desktopScaleFactor);
+    if (options.desktopScaleFactor != 0
+        && options.desktopScaleFactor != 100
+        && options.desktopScaleFactor != 125
+        && options.desktopScaleFactor != 150
+        && options.desktopScaleFactor != 175
+        && options.desktopScaleFactor != 200
+        && options.desktopScaleFactor != 250
+        && options.desktopScaleFactor != 300) {
+        options.desktopScaleFactor = 0;
+    }
     options.performanceFlags = std::clamp(
         jsonInteger(value, "performanceFlags", options.performanceFlags),
         -1, 4095);
@@ -875,6 +887,9 @@ NativeJsonDom::Object rdpOptionsJson(const RdpConnectionOptions &options)
         "colorDepth", static_cast<double>(options.colorDepth));
     value.values.emplace(
         "smartSizing", static_cast<double>(options.smartSizing));
+    value.values.emplace(
+        "desktopScaleFactor",
+        static_cast<double>(options.desktopScaleFactor));
     value.values.emplace(
         "performanceFlags", static_cast<double>(options.performanceFlags));
     value.values.emplace(
@@ -5719,6 +5734,7 @@ void WebViewBackend::notifyRdpQuality(
     payload.values.emplace("colorDepth", static_cast<double>(snapshot.colorDepth));
     payload.values.emplace("displayWidth", static_cast<double>(snapshot.displayWidth));
     payload.values.emplace("displayHeight", static_cast<double>(snapshot.displayHeight));
+    payload.values.emplace("desktopScaleFactor", static_cast<double>(snapshot.desktopScaleFactor));
     payload.values.emplace("smartSizing", snapshot.smartSizing);
     payload.values.emplace("performanceFlags",
                            static_cast<double>(snapshot.performanceFlags));

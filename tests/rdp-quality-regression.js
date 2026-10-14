@@ -7,6 +7,7 @@ const path = require('path');
 const root = path.join(__dirname, '..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8')
     .replaceAll('\r\n', '\n');
+const optionsHeader = read('src/RdpConnectionOptions.h');
 const sessionHeader = read('src/RdpSession.h');
 const session = read('src/RdpSession.cpp');
 const backendHeader = read('src/WebViewBackend.h');
@@ -65,6 +66,15 @@ check('connected RDP sessions expose compact quality metrics in the header',
         && app.includes('["质量", performance')
         && app.includes('["分辨率", resolution')
         && app.includes('if (session.connectionType === "rdp")'));
+check('RDP sessions support high-DPI scaling and resilient disconnect',
+    optionsHeader.includes('desktopScaleFactor')
+        && sessionHeader.includes('desktopScaleFactor')
+        && session.includes('DesktopScaleFactor')
+        && session.includes('DeviceScaleFactor')
+        && backend.includes('desktopScaleFactor')
+        && index.includes('server-rdp-desktop-scale')
+        && app.includes('desktopScaleFactor')
+        && session.includes('put_EnableAutoReconnect(VARIANT_FALSE)'));
 check('quality regression is registered with CTest',
     cmake.includes('MasterTermRdpQualityRegression')
         && fs.existsSync(path.join(root, 'tests', 'rdp-quality-regression.js')));
