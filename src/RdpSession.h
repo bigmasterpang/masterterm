@@ -67,6 +67,8 @@ public:
     void clearOcclusionRegion();
     // Display and remote utility commands exposed by the fullscreen toolbar.
     void setSmartSizing(bool enabled);
+    int desktopScaleFactor() const { return m_desktopScaleFactor; }
+    void setDesktopScaleFactor(int factor);
     // Applies multi-monitor mode before Connect(). The embedded ActiveX
     // control rejects changing this property after a session is connected.
     bool setUseMultimon(bool enabled);
@@ -157,6 +159,8 @@ private:
     void scheduleSurfaceRefresh(bool requestDisplayUpdate = true);
     void focusControlForKeyboard();
     void repaintDesktopSurface();
+    unsigned long effectiveDesktopScaleFactor() const;
+    unsigned long effectiveDeviceScaleFactor() const;
     void emitQuality();
     UINT sendInputSequence(
         const WORD *virtualKeys, const DWORD *flags, UINT count);
@@ -187,6 +191,7 @@ private:
     // Connect(); later resize/refresh passes must not send a single virtual
     // rectangle back to the control.
     bool m_useMultimon = false;
+    int m_desktopScaleFactor = 0;
     bool m_containerHandledFullscreen = false;
     std::wstring m_controlProgId;
     std::wstring m_controlVersion;

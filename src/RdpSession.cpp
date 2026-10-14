@@ -781,6 +781,77 @@ void RdpSession::setSmartSizing(bool enabled)
         + std::to_wstring(static_cast<unsigned long>(result)));
 }
 
+unsigned long RdpSession::effectiveDesktopScaleFactor() const
+{
+    if (m_desktopScaleFactor >= 100)
+        return static_cast<unsigned long>(m_desktopScaleFactor);
+
+    // Auto (0): derive from container / system DPI
+    UINT dpi = 0;
+    if (m_container && IsWindow(m_container))
+        dpi = GetDpiForWindow(m_container);
+    if (dpi == 0 && m_parent && IsWindow(m_parent))
+        dpi = GetDpiForWindow(m_parent);
+    if (dpi == 0)
+        dpi = GetDpiForSystem();
+    if (dpi == 0)
+        return 100;
+
+    const unsigned long rawScale = (dpi * 100 + 48) / 96;
+    if (rawScale >= 275)
+        return 300;
+    if (rawScale >= 225)
+        return 250;
+    if (rawScale >= 188)
+        return 200;
+    if (rawScale >= 163)
+        return 175;
+    if (rawScale >= 138)
+        return 150;
+    if (rawScale >= 113)
+        return 125;
+    return 100;
+}
+
+unsigned long RdpSession::effectiveDeviceScaleFactor() const
+{
+    const unsigned long desktopScale = effectiveDesktopScaleFactor();
+    if (desktopScale >= 175)
+        return 180;
+    if (desktopScale >= 140)
+        return 140;
+    return 100;
+}
+
+void RdpSession::setDesktopScaleFactor(int factor)
+{
+    m_desktopScaleFactor = factor;
+    const unsigned long desktopScale = effectiveDesktopScaleFactor();
+    const unsigned long deviceScale = effectiveDeviceScaleFactor();
+    m_quality.desktopScaleFactor = static_cast<int>(desktopScale);
+    if (m_connected && !m_useMultimon && m_impl && m_impl->control) {
+        IMsRdpClient9Ptr client9;
+        if (SUCCEEDED(m_impl->control.QueryInterface(
+                __uuidof(IMsRdpClient9),
+                reinterpret_cast<void **>(&client9)))
+            && client9) {
+            const HRESULT result = client9->UpdateSessionDisplaySettings(
+                static_cast<unsigned long>(m_displayWidth),
+                static_cast<unsigned long>(m_displayHeight),
+                static_cast<unsigned long>(m_displayWidth),
+                static_cast<unsigned long>(m_displayHeight),
+                0, desktopScale, deviceScale);
+            m_quality.lastOperation = L"动态缩放设置";
+            m_quality.lastHresult = static_cast<unsigned long>(result);
+            m_quality.lastHresultSucceeded = SUCCEEDED(result);
+            emitQuality();
+            writeLog(std::wstring(L"  UpdateSessionDisplaySettings dynamic scale=")
+                + std::to_wstring(desktopScale) + L"% -> 0x"
+                + std::to_wstring(static_cast<unsigned long>(result)));
+        }
+    }
+}
+
 bool RdpSession::setUseMultimon(bool enabled)
 {
     if (!m_impl || !m_impl->control)
@@ -1586,12 +1657,14 @@ void RdpSession::repaintDesktopSurface()
                     __uuidof(IMsRdpClient9),
                     reinterpret_cast<void **>(&client9)))
                 && client9) {
+                const unsigned long desktopScale = effectiveDesktopScaleFactor();
+                const unsigned long deviceScale = effectiveDeviceScaleFactor();
                 refreshResult = client9->UpdateSessionDisplaySettings(
                     static_cast<unsigned long>(m_displayWidth),
                     static_cast<unsigned long>(m_displayHeight),
                     static_cast<unsigned long>(m_displayWidth),
                     static_cast<unsigned long>(m_displayHeight),
-                    0, 100, 100);
+                    0, desktopScale, deviceScale);
             }
         }
     }
@@ -2043,9 +2116,11 @@ void RdpSession::connect(const std::wstring &host, int port,
         + L" user=" + user);
     m_visible = false;
     m_surfaceRefreshNeedsDisplayUpdate = false;
-    m_displaySettingsSynchronized = false;
+    m_desktopScaleFactor = options.desktopScaleFactor;
+    const unsigned long desktopScale = effectiveDesktopScaleFactor();
+    const unsigned long deviceScale = effectiveDeviceScaleFactor();
     m_quality = RdpQualitySnapshot{};
-    m_quality.desktopScaleFactor = options.desktopScaleFactor;
+    m_quality.desktopScaleFactor = static_cast<int>(desktopScale);
     m_quality.lastOperation = L"连接参数准备";
     if (m_container)
         ShowWindow(m_container, SW_HIDE);
@@ -2077,24 +2152,18 @@ void RdpSession::connect(const std::wstring &host, int port,
             IID_IMsRdpExtendedSettings,
             reinterpret_cast<void **>(&extendedSettings)))
         && extendedSettings) {
-        if (options.desktopScaleFactor >= 100) {
+        if (desktopScale >= 100) {
             VARIANT scale;
             VariantInit(&scale);
             scale.vt = VT_UI4;
-            scale.ulVal = static_cast<ULONG>(options.desktopScaleFactor);
+            scale.ulVal = desktopScale;
             _bstr_t desktopScaleProp(L"DesktopScaleFactor");
             const HRESULT desktopScaleResult =
                 extendedSettings->put_Property(desktopScaleProp, &scale);
             writeLog(L"  DesktopScaleFactor="
-                + std::to_wstring(options.desktopScaleFactor) + L" -> 0x"
+                + std::to_wstring(desktopScale) + L" -> 0x"
                 + std::to_wstring(static_cast<unsigned long>(desktopScaleResult)));
 
-            ULONG deviceScale = 100;
-            if (options.desktopScaleFactor >= 180) {
-                deviceScale = 180;
-            } else if (options.desktopScaleFactor >= 140) {
-                deviceScale = 140;
-            }
             VARIANT devScale;
             VariantInit(&devScale);
             devScale.vt = VT_UI4;
@@ -2593,21 +2662,25 @@ void RdpSession::resize(
                             __uuidof(IMsRdpClient9),
                             reinterpret_cast<void **>(&client9)))
                         && client9) {
+                    const unsigned long desktopScale = effectiveDesktopScaleFactor();
+                    const unsigned long deviceScale = effectiveDeviceScaleFactor();
                     const HRESULT result = client9->UpdateSessionDisplaySettings(
                             static_cast<unsigned long>(width),
                             static_cast<unsigned long>(desktopHeight),
                             static_cast<unsigned long>(width),
                             static_cast<unsigned long>(desktopHeight),
-                            0, 100, 100);
+                            0, desktopScale, deviceScale);
                     m_quality.displayWidth = width;
                     m_quality.displayHeight = desktopHeight;
+                    m_quality.desktopScaleFactor = static_cast<int>(desktopScale);
                     m_quality.lastOperation = L"分辨率刷新";
                     m_quality.lastHresult = static_cast<unsigned long>(result);
                     m_quality.lastHresultSucceeded = SUCCEEDED(result);
                     emitQuality();
                     writeLog(std::wstring(L"  UpdateSessionDisplaySettings(")
                         + std::to_wstring(width) + L"x"
-                        + std::to_wstring(desktopHeight) + L") -> 0x"
+                        + std::to_wstring(desktopHeight)
+                        + L" scale=" + std::to_wstring(desktopScale) + L"%) -> 0x"
                         + std::to_wstring(
                             static_cast<unsigned long>(result)));
                 }
