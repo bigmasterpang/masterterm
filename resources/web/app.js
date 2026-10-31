@@ -626,7 +626,7 @@
     defaultLocalShell: "auto",
     localWorkingDir: "",
     terminalThemePreset: "custom",
-    updateServerUrl: "https://vm.dapang.wang/updates/masterterm.json"
+    updateServerUrl: "https://ali.dapang.wang/updates/masterterm.json"
   };
   let appSettings = { ...defaultSettings };
   try {
@@ -648,7 +648,7 @@
     if (!value.terminalThemePreset) value.terminalThemePreset = defaultSettings.terminalThemePreset;
     for (const key of ["connectionTypeColorSsh", "connectionTypeColorRdp", "connectionTypeColorSerial"])
       if (!/^#[0-9a-f]{6}$/i.test(String(value[key] || ""))) value[key] = defaultSettings[key];
-    if (!value.updateServerUrl || typeof value.updateServerUrl !== "string" || value.updateServerUrl.includes("ps.dapang.wang"))
+    if (!value.updateServerUrl || typeof value.updateServerUrl !== "string" || value.updateServerUrl.includes("ps.dapang.wang") || value.updateServerUrl.includes("vm.dapang.wang"))
       value.updateServerUrl = defaultSettings.updateServerUrl;
     return value;
   };
@@ -2725,7 +2725,7 @@
 
   const cloudSyncStorageKey = "masterterm.cloud";
   const cloudSyncDefaultUrl = "https://vm.dapang.wang/cloud-sync";
-  const updateServerDefaultUrl = "https://vm.dapang.wang/updates/masterterm.json";
+  const updateServerDefaultUrl = "https://ali.dapang.wang/updates/masterterm.json";
   let cloudState = { url: cloudSyncDefaultUrl, username: "", token: "", updatedAt: "" };
   try {
     const storedCloud = JSON.parse(localStorage.getItem(cloudSyncStorageKey) || "{}");
@@ -3309,6 +3309,10 @@
   let updateProgressHandler = null;
   const showUpdateDialog = payload => {
     if (!payload || !payload.hasUpdate || !payload.latestVersion) return;
+    if (payload.url && payload.url.startsWith("/")) {
+      const server = appSettings.updateServerUrl || updateServerDefaultUrl;
+      try { payload.url = new URL(payload.url, server).href; } catch {}
+    }
     showTransientStatus(
       `发现新版本 ${payload.latestVersion}，可下载更新`);
     status.title = payload.url || "";
@@ -3339,6 +3343,10 @@
   };
   const downloadAndInstallUpdate = (url, sha256) => {
     if (!url) return;
+    if (url.startsWith("/")) {
+      const server = appSettings.updateServerUrl || updateServerDefaultUrl;
+      try { url = new URL(url, server).href; } catch {}
+    }
     showTransientStatus("正在下载更新…", 8000);
     let downloadPath = "";
     let progressDialog = null;
@@ -3466,7 +3474,7 @@
       defaultLocalShell: document.querySelector("#setting-default-local-shell")?.value || defaultSettings.defaultLocalShell,
       localWorkingDir: document.querySelector("#setting-local-working-dir")?.value || defaultSettings.localWorkingDir,
       terminalThemePreset: document.querySelector("#setting-terminal-theme-preset")?.value || defaultSettings.terminalThemePreset,
-      updateServerUrl: (appSettings.updateServerUrl && !appSettings.updateServerUrl.includes("ps.dapang.wang"))
+      updateServerUrl: (appSettings.updateServerUrl && !appSettings.updateServerUrl.includes("ps.dapang.wang") && !appSettings.updateServerUrl.includes("vm.dapang.wang"))
         ? appSettings.updateServerUrl
         : updateServerDefaultUrl,
       editorAssociations: appSettings.editorAssociations || {}

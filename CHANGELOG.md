@@ -4,6 +4,13 @@
 
 ---
 
+### v0.1.141 (2026-10-31)
+
+- **主更新源与版本发布服务全面切换至 `ali.dapang.wang` 高速节点**：
+  - **更新源与发布配置收拢**：将程序内置默认检查更新服务地址（`updateServerUrl`）切换为 `https://ali.dapang.wang/updates/masterterm.json`，并配置自动化更新发布流水线（`publish-update.ps1`）同步推送更新包与元数据至 `ali.dapang.wang`；
+  - **本地持久化配置静默自愈迁移**：在应用加载初始化时，自动检测并清洗 WebView2 本地持久化缓存（`localStorage`）中残留的历史旧更新源（包括 `vm.dapang.wang` 与 `ps.dapang.wang`），静默迁移为 `ali.dapang.wang` 并持久化存储，无需用户手动修改设置；
+  - **全链路相对下载地址自适应解析**：在客户端原生层与前端下载逻辑中实现自适应 URL 补全解析机制，无论是绝对 URL 还是由服务端生成的标准相对路径（如 `/download/...`），均能以当前更新源为基准精准补全并稳定下载校验。
+
 ### v0.1.140 (2026-10-31)
 
 - **彻底修复程序安装在中文路径（如 `D:\软件\MasterTerm`）下在线更新后目录乱码为 `D:\杞欢\MasterTerm` 的缺陷**：

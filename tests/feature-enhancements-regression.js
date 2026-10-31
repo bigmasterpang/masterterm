@@ -754,9 +754,11 @@ check('Custom shortcuts manager supports recording, reset per item, all reset, a
         && app.includes('renderShortcutsDialogList'));
 
 // 63. Legacy Update URL & Cloud URL Sanitization / Auto-migration
-check('Legacy ps.dapang.wang update and cloud URLs are automatically cleaned and migrated to vm.dapang.wang',
+check('Legacy ps.dapang.wang and vm.dapang.wang update URLs are automatically cleaned and migrated to ali.dapang.wang',
     app.includes('value.updateServerUrl.includes("ps.dapang.wang")')
+        && app.includes('value.updateServerUrl.includes("vm.dapang.wang")')
         && app.includes('cloudState.url.includes("ps.dapang.wang")')
+        && app.includes('updateServerUrl: "https://ali.dapang.wang/updates/masterterm.json"')
         && app.includes('rawStoredUpdateUrl !== appSettings.updateServerUrl'));
 
 // 64. Top Command Native PTY Lifecycle (No synthetic alternate screen hijack)

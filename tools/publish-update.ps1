@@ -152,8 +152,8 @@ if ($MasterPortalUrl -and $MasterPortalToken) {
 }
 
 # 4. Upload to SSH / Legacy channel
-if ($Connection -and ($PublishTargets -contains 'legacy' -or $PublishTargets -contains 'ssh' -or (-not $masterSuccess -and $PublishTargets.Count -gt 0))) {
-    if ($masterSuccess) {
+if ($Connection -and ($PublishTargets -contains 'legacy' -or $PublishTargets -contains 'ssh' -or $PublishTargets -contains 'ali.dapang.wang' -or (-not $masterSuccess -and $PublishTargets.Count -gt 0))) {
+    if ($masterSuccess -and $Connection -notmatch 'ali\.dapang\.wang') {
         Write-Host "Legacy channel synchronized on-server. Skipping redundant SCP upload." -ForegroundColor Green
     } else {
         $cli = Join-Path $resolvedBuildDir 'MasterTerm-cli.exe'

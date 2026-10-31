@@ -5888,9 +5888,17 @@ void WebViewBackend::startSelfUpdateCheck(
                         > parseVersionParts(MASTERTERM_VERSION)) {
                     payload.values.emplace("latestVersion", latestVersion);
                     if (urlValue != object.values.end()
-                        && urlValue->second.isString())
-                        payload.values.emplace(
-                            "url", urlValue->second.string());
+                        && urlValue->second.isString()) {
+                        std::string urlStr = urlValue->second.string();
+                        if (!urlStr.empty() && urlStr.front() == '/') {
+                            const std::string scheme = secure ? "https://" : "http://";
+                            const std::string hostStr = utf8Text(NativeString::fromStdWString(host));
+                            const std::string portStr = (port != (secure ? 443 : 80) && port != 0)
+                                ? (":" + std::to_string(port)) : "";
+                            urlStr = scheme + hostStr + portStr + urlStr;
+                        }
+                        payload.values.emplace("url", urlStr);
+                    }
                     if (sha != object.values.end()
                         && sha->second.isString())
                         payload.values.emplace(
