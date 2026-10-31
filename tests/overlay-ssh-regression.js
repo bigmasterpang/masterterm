@@ -137,6 +137,10 @@ check('updater validates a staging directory before replacing the app',
     backendCpp.includes('masterterm-update-stage-')
         && backendCpp.includes("package web/index.html missing")
         && backendCpp.includes("validated staged install copied"));
+check('updater script writes UTF-8 BOM to prevent Chinese path corruption in PowerShell',
+    backendCpp.includes('0xEF, 0xBB, 0xBF')
+        && backendCpp.includes('recoverGarbledUtf8GbkPath')
+        && backendCpp.includes('findOrphanGarbledDirectory'));
 check('release packaging uses the compatible system ZIP writer',
     packageScript.includes('Get-Command tar.exe')
         && packageScript.includes('-a -cf $zipPath -C $staging .')

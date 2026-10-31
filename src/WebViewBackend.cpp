@@ -6107,6 +6107,71 @@ void WebViewBackend::startUpdateDownload(
     }).detach();
 }
 
+namespace {
+std::wstring recoverGarbledUtf8GbkPath(const std::wstring &input)
+{
+    bool hasPua = false;
+    for (wchar_t ch : input) {
+        if (ch >= 0xE000 && ch <= 0xF8FF) {
+            hasPua = true;
+            break;
+        }
+    }
+    if (!hasPua)
+        return input;
+
+    const int gbkLen = WideCharToMultiByte(
+        936, 0, input.c_str(), static_cast<int>(input.size()),
+        nullptr, 0, nullptr, nullptr);
+    if (gbkLen <= 0)
+        return input;
+    std::string gbkBytes(static_cast<std::size_t>(gbkLen), '\0');
+    WideCharToMultiByte(
+        936, 0, input.c_str(), static_cast<int>(input.size()),
+        &gbkBytes[0], gbkLen, nullptr, nullptr);
+
+    const int utf8Len = MultiByteToWideChar(
+        CP_UTF8, MB_ERR_INVALID_CHARS, gbkBytes.data(), gbkLen,
+        nullptr, 0);
+    if (utf8Len <= 0)
+        return input;
+    std::wstring recovered(static_cast<std::size_t>(utf8Len), L'\0');
+    MultiByteToWideChar(
+        CP_UTF8, MB_ERR_INVALID_CHARS, gbkBytes.data(), gbkLen,
+        &recovered[0], utf8Len);
+    return recovered;
+}
+
+std::wstring findOrphanGarbledDirectory(const std::wstring &normalDir)
+{
+    const int utf8Len = WideCharToMultiByte(
+        CP_UTF8, 0, normalDir.c_str(), static_cast<int>(normalDir.size()),
+        nullptr, 0, nullptr, nullptr);
+    if (utf8Len <= 0)
+        return {};
+    std::string utf8Bytes(static_cast<std::size_t>(utf8Len), '\0');
+    WideCharToMultiByte(
+        CP_UTF8, 0, normalDir.c_str(), static_cast<int>(normalDir.size()),
+        &utf8Bytes[0], utf8Len, nullptr, nullptr);
+
+    const int gbkWideLen = MultiByteToWideChar(
+        936, 0, utf8Bytes.data(), utf8Len, nullptr, 0);
+    if (gbkWideLen <= 0)
+        return {};
+    std::wstring simulated(static_cast<std::size_t>(gbkWideLen), L'\0');
+    MultiByteToWideChar(
+        936, 0, utf8Bytes.data(), utf8Len, &simulated[0], gbkWideLen);
+    if (simulated == normalDir)
+        return {};
+
+    std::error_code ec;
+    const std::filesystem::path candidate(simulated);
+    if (std::filesystem::exists(candidate, ec) && std::filesystem::is_directory(candidate, ec))
+        return simulated;
+    return {};
+}
+} // namespace
+
 bool WebViewBackend::installUpdate(
     const NativeString &zipPath, NativeString &error) const
 {
@@ -6118,12 +6183,29 @@ bool WebViewBackend::installUpdate(
     }
     const std::filesystem::path applicationDir =
         nativePath(applicationDirectory());
+    std::filesystem::path targetDir = applicationDir;
+    std::wstring garbledDirText;
+
+    const std::wstring rawDirText = applicationDir.wstring();
+    const std::wstring recoveredDirText = recoverGarbledUtf8GbkPath(rawDirText);
+    if (recoveredDirText != rawDirText) {
+        // If MasterTerm was launched from an erroneously generated garbled path
+        // (e.g. D:\杞欢\MasterTerm), redirect the target installation path back
+        // to the genuine user directory (e.g. D:\软件\MasterTerm).
+        targetDir = std::filesystem::path(recoveredDirText);
+        garbledDirText = rawDirText;
+    } else {
+        // If running from the normal directory, check if an orphan garbled directory
+        // was left behind by a previous update bug so it can be cleaned up.
+        garbledDirText = findOrphanGarbledDirectory(rawDirText);
+    }
+
     const std::filesystem::path scriptPath =
         std::filesystem::temp_directory_path() / L"masterterm-update.ps1";
     // Single-quoted PowerShell strings: escape embedded quotes by doubling.
     std::wstring zipText = zip.wstring();
-    std::wstring dirText = applicationDir.wstring();
-    std::wstring exeText = (applicationDir / L"MasterTerm.exe").wstring();
+    std::wstring dirText = targetDir.wstring();
+    std::wstring exeText = (targetDir / L"MasterTerm.exe").wstring();
     const auto escape = [](std::wstring value) {
         std::wstring result;
         result.reserve(value.size() + 4);
@@ -6138,20 +6220,23 @@ bool WebViewBackend::installUpdate(
         return result;
     };
     std::wstring script;
+    script += L"[Console]::OutputEncoding = [System.Text.Encoding]::UTF8\r\n";
+    script += L"$OutputEncoding = [System.Text.Encoding]::UTF8\r\n";
     script += L"$log = Join-Path $env:TEMP 'masterterm-update.log'\r\n";
-    script += L"'--- update start ' + (Get-Date) | Out-File $log\r\n";
+    script += L"'--- update start ' + (Get-Date) | Out-File $log -Encoding utf8\r\n";
     script += L"$zip = " + escape(zipText) + L"\r\n";
     script += L"$dir = " + escape(dirText) + L"\r\n";
     script += L"$exe = " + escape(exeText) + L"\r\n";
+    script += L"$garbledDir = " + (garbledDirText.empty() ? L"''" : escape(garbledDirText)) + L"\r\n";
     script += L"$stage = Join-Path $env:TEMP ('masterterm-update-stage-' + [guid]::NewGuid().ToString('N'))\r\n";
-    script += L"'zip=' + $zip | Out-File $log -Append\r\n";
-    script += L"'dir=' + $dir | Out-File $log -Append\r\n";
+    script += L"'zip=' + $zip | Out-File $log -Append -Encoding utf8\r\n";
+    script += L"'dir=' + $dir | Out-File $log -Append -Encoding utf8\r\n";
     script += L"$deadline = (Get-Date).AddMinutes(5)\r\n";
     script += L"while (Get-Process -Name MasterTerm -ErrorAction SilentlyContinue) {\r\n";
-    script += L"    if ((Get-Date) -gt $deadline) { 'timeout waiting for MasterTerm exit' | Out-File $log -Append; exit 1 }\r\n";
+    script += L"    if ((Get-Date) -gt $deadline) { 'timeout waiting for MasterTerm exit' | Out-File $log -Append -Encoding utf8; exit 1 }\r\n";
     script += L"    Start-Sleep -Seconds 1\r\n";
     script += L"}\r\n";
-    script += L"'MasterTerm exited' | Out-File $log -Append\r\n";
+    script += L"'MasterTerm exited' | Out-File $log -Append -Encoding utf8\r\n";
     script += L"$before = (Get-Item $exe -ErrorAction SilentlyContinue).Length\r\n";
     script += L"try {\r\n";
     script += L"    New-Item -ItemType Directory -Path $stage -Force | Out-Null\r\n";
@@ -6162,26 +6247,34 @@ bool WebViewBackend::installUpdate(
     script += L"    Get-Process -Name MasterTermSftpWorker -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue\r\n";
     script += L"    Copy-Item -Path (Join-Path $stage '*') -Destination $dir -Recurse -Force -ErrorAction Stop 2>>$log\r\n";
     script += L"} catch {\r\n";
-    script += L"    'extract exception: ' + $_.Exception.Message | Out-File $log -Append\r\n";
+    script += L"    'extract exception: ' + $_.Exception.Message | Out-File $log -Append -Encoding utf8\r\n";
     script += L"    Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue\r\n";
     script += L"    exit 3\r\n";
     script += L"}\r\n";
-    script += L"'validated staged install copied' | Out-File $log -Append\r\n";
+    script += L"'validated staged install copied' | Out-File $log -Append -Encoding utf8\r\n";
+    script += L"if ($garbledDir -and (Test-Path $garbledDir) -and ($garbledDir -ne $dir)) {\r\n";
+    script += L"    'cleaning up orphan garbled directory: ' + $garbledDir | Out-File $log -Append -Encoding utf8\r\n";
+    script += L"    Remove-Item $garbledDir -Recurse -Force -ErrorAction SilentlyContinue\r\n";
+    script += L"}\r\n";
     script += L"$after = (Get-Item $exe -ErrorAction SilentlyContinue).Length\r\n";
-    script += L"'exe before=' + $before + ' after=' + $after | Out-File $log -Append\r\n";
-    script += L"if (-not (Test-Path $exe)) { 'exe missing after extract' | Out-File $log -Append; exit 2 }\r\n";
-    script += L"if (-not (Test-Path (Join-Path $dir 'web\\index.html'))) { 'web/index.html missing after extract' | Out-File $log -Append; exit 4 }\r\n";
+    script += L"'exe before=' + $before + ' after=' + $after | Out-File $log -Append -Encoding utf8\r\n";
+    script += L"if (-not (Test-Path $exe)) { 'exe missing after extract' | Out-File $log -Append -Encoding utf8; exit 2 }\r\n";
+    script += L"if (-not (Test-Path (Join-Path $dir 'web\\index.html'))) { 'web/index.html missing after extract' | Out-File $log -Append -Encoding utf8; exit 4 }\r\n";
     script += L"if ($before -eq $after) { 'exe unchanged - extract may have failed' | Out-File $log -Append }\r\n";
     script += L"Remove-Item $zip -Force -ErrorAction SilentlyContinue\r\n";
     script += L"Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue\r\n";
     script += L"Start-Process -FilePath $exe -WorkingDirectory $dir\r\n";
-    script += L"'update finished' | Out-File $log -Append\r\n";
+    script += L"'update finished' | Out-File $log -Append -Encoding utf8\r\n";
     script += L"Remove-Item $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue\r\n";
     std::ofstream output(scriptPath, std::ios::binary | std::ios::trunc);
     if (!output) {
         error = NativeString("无法创建更新脚本");
         return false;
     }
+    // Write UTF-8 BOM (0xEF, 0xBB, 0xBF) so Windows PowerShell 5.1 parses Chinese
+    // and non-ASCII paths using UTF-8 rather than system ANSI (GBK/CP936).
+    const unsigned char bom[] = {0xEF, 0xBB, 0xBF};
+    output.write(reinterpret_cast<const char *>(bom), sizeof(bom));
     const std::string utf8 = wideToUtf8(script);
     output.write(utf8.data(), static_cast<std::streamsize>(utf8.size()));
     output.close();
