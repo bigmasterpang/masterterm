@@ -3071,26 +3071,6 @@
     }
     cloudSyncStatus.textContent = "正在准备上传…";
     try {
-      // 检查云端快照配额（普通用户最多保留 3 个备份版本）
-      try {
-        const historyData = await post("cloud.history", {
-          url: cloudState.url, token: cloudState.token
-        });
-        const snapshots = Array.isArray(historyData?.snapshots) ? historyData.snapshots : [];
-        if (snapshots.length >= 3) {
-          cloudSyncStatus.textContent = "云端备份已达上限（3/3），请在【历史版本】中删除旧版本";
-          if (await requestConfirmation(
-            "云端备份配额已满",
-            "公益备份服务限制每个普通用户最多保留 3 个历史备份版本。\n\n"
-              + `当前账号已有 ${snapshots.length} 个历史版本，无法继续创建新备份。\n\n`
-              + "是否现在前往【历史版本】管理和删除旧版本？", "前往管理")) {
-            await openCloudHistory();
-          }
-          return;
-        }
-      } catch {
-        // 若查询历史失败，不阻断主流程，由服务端校验最终拦截
-      }
       const payload = await buildCloudPayload();
       let remote = null;
       try {
@@ -3175,8 +3155,8 @@
   const renderCloudHistory = snapshots => {
     const quotaEl = document.querySelector("#cloud-history-quota");
     if (quotaEl) {
-      quotaEl.textContent = `备份配额：${snapshots.length} / 3 个（公益服务限制普通用户上限 3 个${snapshots.length >= 3 ? "，已达上限，需删除旧版本后方可继续备份" : ""}）`;
-      quotaEl.style.color = snapshots.length >= 3 ? "#f87171" : "#94a3b8";
+      quotaEl.textContent = `备份配额：${snapshots.length} / 3 个（自动保留最新 3 个备份，超出上限时自动替换旧版本）`;
+      quotaEl.style.color = "#94a3b8";
     }
     cloudHistoryList.replaceChildren();
     cloudHistoryEmpty.hidden = snapshots.length > 0;
@@ -12328,7 +12308,7 @@ temporary,
       showTransientStatus("当前没有已连接的终端会话，请先连接或打开终端。");
       return;
     }
-    focusSession(targetSession.sessionId);
+    activateSession(targetSession.sessionId);
     const data = execute ? (cmd.endsWith("\r") || cmd.endsWith("\n") ? cmd : cmd + "\r") : cmd;
     post("session.input", { sessionId: targetSession.sessionId, data }).catch(reportError);
     targetSession.terminal?.focus();
@@ -13599,7 +13579,7 @@ temporary,
       showTransientStatus("未找到该 SFTP 关联的活动 SSH 终端，无法执行远程 cd。");
       return;
     }
-    focusSession(targetSession.sessionId);
+    activateSession(targetSession.sessionId);
     const sanitizedPath = targetPath.replace(/["$`]/g, "");
     const cdCmd = `cd "${sanitizedPath}"\r`;
     post("session.input", { sessionId: targetSession.sessionId, data: cdCmd }).catch(reportError);
@@ -13669,7 +13649,7 @@ temporary,
           badge: "已连接",
           badgeColor: "#10b981",
           keywords: `${session.displayName || ""} ${session.name || ""} ${session.sessionId} ${typeBadge} session`,
-          action: () => focusSession(session.sessionId)
+          action: () => activateSession(session.sessionId)
         });
       }
     });

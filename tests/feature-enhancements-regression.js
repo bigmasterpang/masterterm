@@ -42,7 +42,8 @@ check('app.js implements quick switcher with Ctrl+P/Ctrl+K and fuzzy match',
     app.includes('toggleQuickSwitcher')
         && app.includes('filterQuickSwitcherItems')
         && app.includes('key.toLowerCase() === "p"')
-        && app.includes('key.toLowerCase() === "k"'));
+        && app.includes('key.toLowerCase() === "k"')
+        && app.includes('action: () => activateSession(session.sessionId)'));
 
 // 2. Multi-local Shell & ConPTY custom working directory
 check('LocalShellSession supports workingDir parameter',

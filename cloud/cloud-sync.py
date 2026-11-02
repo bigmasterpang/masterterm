@@ -198,18 +198,12 @@ class SyncDatabase:
                 (username,)).fetchone()
             quota = self.get_quota(username)
             if current and current[0] is not None:
-                count_row = self._db.execute(
-                    "SELECT COUNT(1) FROM sync_snapshots WHERE username = ?",
-                    (username,)).fetchone()
-                existing_count = count_row[0] if count_row else 0
-                if existing_count >= quota:
-                    return None, f"备份数量已达上限（普通用户最多保留 {quota} 个备份版本），请前往【版本历史】删除旧版本后再备份。"
-
                 seq = self._next_seq_locked(username)
                 self._db.execute(
                     "INSERT INTO sync_snapshots "
                     "(username, seq, payload, name, updated_at) VALUES (?,?,?,?,?)",
                     (username, seq, current[0], "", current[1]))
+                # 自动轮转淘汰机制：备份达到或超出配额时，自动淘汰最旧备份，严格保留最新 quota (3) 个备份文件
                 self._db.execute(
                     "DELETE FROM sync_snapshots WHERE username = ? AND seq NOT IN ("
                     "SELECT seq FROM sync_snapshots WHERE username = ? "
