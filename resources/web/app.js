@@ -80,25 +80,26 @@
     transientStatusMessage = "";
     transientStatusToken++;
   };
-  const setHeaderStatus = message => {
-    clearTransientStatusTimer();
-    status.textContent = String(message || "");
-  };
-  const showTransientStatus = (message, duration = 5000) => {
+  const setHeaderStatus = (message, duration = 5000) => {
     clearTransientStatusTimer();
     const value = String(message || "");
     status.textContent = value;
     if (!value) return;
-    transientStatusMessage = value;
-    const token = transientStatusToken;
-    transientStatusTimer = setTimeout(() => {
-      if (token === transientStatusToken && status.textContent === value)
-        status.textContent = "";
-      if (token === transientStatusToken) {
-        transientStatusMessage = "";
-        transientStatusTimer = 0;
-      }
-    }, duration);
+    if (duration > 0) {
+      transientStatusMessage = value;
+      const token = transientStatusToken;
+      transientStatusTimer = setTimeout(() => {
+        if (token === transientStatusToken && status.textContent === value)
+          status.textContent = "";
+        if (token === transientStatusToken) {
+          transientStatusMessage = "";
+          transientStatusTimer = 0;
+        }
+      }, duration);
+    }
+  };
+  const showTransientStatus = (message, duration = 5000) => {
+    setHeaderStatus(message, duration);
   };
   const serverMetrics = document.querySelector("#server-metrics");
   const terminalStatusBar = document.querySelector("#terminal-status-bar");
@@ -139,20 +140,22 @@
   const isRdpConnectingStatus = value =>
     /^(?:正在打开远程桌面|正在连接远程桌面)/.test(String(value || ""));
   const clearRdpConnectingStatus = (sessionId, replacement = "") => {
-    if (rdpConnectingStatusSessionId !== sessionId) return false;
+    if (sessionId && rdpConnectingStatusSessionId && rdpConnectingStatusSessionId !== sessionId)
+      return false;
     rdpConnectingStatusSessionId = "";
     if (isRdpConnectingStatus(status.textContent))
-      setHeaderStatus(replacement);
+      setHeaderStatus(replacement, replacement ? 5000 : 0);
     return true;
   };
   const clearRdpConnectedStatus = sessionId => {
-    if (rdpConnectedStatusSessionId !== sessionId) return false;
+    if (sessionId && rdpConnectedStatusSessionId && rdpConnectedStatusSessionId !== sessionId)
+      return false;
     if (rdpConnectedStatusTimer) {
       clearTimeout(rdpConnectedStatusTimer);
       rdpConnectedStatusTimer = null;
     }
     rdpConnectedStatusSessionId = "";
-    if (connectionSuccessStatusSessionId === sessionId) {
+    if (!sessionId || connectionSuccessStatusSessionId === sessionId) {
       if (connectionSuccessStatusTimer) {
         clearTimeout(connectionSuccessStatusTimer);
         connectionSuccessStatusTimer = null;
@@ -161,7 +164,7 @@
       connectionSuccessStatusMessage = "";
     }
     if (status.textContent === "远程桌面已连接")
-      setHeaderStatus("");
+      setHeaderStatus("", 0);
     return true;
   };
   const showTransientConnectionStatus = (message, sessionId) => {
@@ -204,7 +207,7 @@
         || activeSession !== session) return;
     if (session.state === "connecting") {
       rdpConnectingStatusSessionId = session.sessionId;
-      setHeaderStatus("正在连接远程桌面…");
+      setHeaderStatus("正在连接远程桌面…", 5000);
     } else if (session.state === "connected") {
       clearRdpConnectingStatus(session.sessionId);
       showRdpConnectedStatus(session.sessionId);
@@ -1806,14 +1809,14 @@
           sessionId, profile.name || profile.address, "rdp", profile.index, options);
         if (session?.state === "connecting" && activeSession === session) {
           rdpConnectingStatusSessionId = sessionId;
-          setHeaderStatus("正在连接远程桌面…");
+          setHeaderStatus("正在连接远程桌面…", 5000);
         }
         return post("session.rdpOpen", {
           index: profile.index, sessionId
         });
       }).catch(reportError);
     }
-    setHeaderStatus(`正在连接 ${profile.name || profile.address}…`);
+    setHeaderStatus(`正在连接 ${profile.name || profile.address}…`, 5000);
     return ensureTerminalLibraries()
       .then(() => post("session.connect", {
         index: profile.index,
@@ -4586,10 +4589,22 @@
     const index = favorites.indexOf(normalized);
     if (index >= 0) {
       favorites.splice(index, 1);
-      sftpStatusText.textContent = `已取消收藏：${normalized}`;
+      const msg = `已取消收藏：${normalized}`;
+      sftpStatusText.textContent = msg;
+      setTimeout(() => {
+        if (sftpStatusText.textContent === msg) {
+          sftpStatusText.textContent = sftpPath || "未打开 SFTP 连接";
+        }
+      }, 3000);
     } else {
       favorites.push(normalized);
-      sftpStatusText.textContent = `已收藏：${normalized}`;
+      const msg = `已收藏：${normalized}`;
+      sftpStatusText.textContent = msg;
+      setTimeout(() => {
+        if (sftpStatusText.textContent === msg) {
+          sftpStatusText.textContent = sftpPath || "未打开 SFTP 连接";
+        }
+      }, 3000);
     }
     localStorage.setItem(key, JSON.stringify(favorites));
     renderSftpFavorites();
@@ -6967,13 +6982,21 @@ temporary,
       if (rdpConnectedStatusSessionId
           && rdpConnectedStatusSessionId !== target.sessionId)
         clearRdpConnectedStatus(rdpConnectedStatusSessionId);
-      if (target.connectionType === "rdp" && target.state === "connecting")
-        syncRdpStatus(target);
-      else if (target.connectionType !== "rdp"
-          && rdpConnectingStatusSessionId) {
-        // A connecting RDP tab may be left in the background. Its transient
-        // header message must not follow the user onto an SSH/local tab.
+      if (rdpConnectingStatusSessionId
+          && rdpConnectingStatusSessionId !== target.sessionId)
         clearRdpConnectingStatus(rdpConnectingStatusSessionId);
+      if (target.connectionType === "rdp") {
+        if (target.state === "connecting") {
+          syncRdpStatus(target);
+        } else {
+          clearRdpConnectingStatus(target.sessionId);
+          if (isRdpConnectingStatus(status.textContent))
+            setHeaderStatus("", 0);
+        }
+      } else {
+        clearRdpConnectingStatus(rdpConnectingStatusSessionId);
+        if (isRdpConnectingStatus(status.textContent))
+          setHeaderStatus("", 0);
       }
       if (splitMode) renderSplit();
       target.scheduleRefit();
@@ -7434,7 +7457,15 @@ temporary,
       if (next) activateSession(next);
       else focusedSessionId = "";
     }
-    if (!sessions.size) focusedSessionId = "";
+    if (!sessions.size) {
+      focusedSessionId = "";
+      clearTransientStatusTimer();
+      clearRdpConnectingStatus();
+      clearRdpConnectedStatus();
+      status.textContent = activeWorkspace === "全部连接"
+        ? `${profilesCache.length} 个服务器配置`
+        : `${activeWorkspace} · ${profilesCache.length} 个连接`;
+    }
     renderServerMetrics();
     const empty = sessions.size === 0;
     terminalTabs.hidden = empty;
@@ -10110,6 +10141,9 @@ temporary,
       }
       if (focusedSessionId === session.sessionId)
         renderServerMetrics();
+      if (state === "connected" || state.startsWith("error:") || state === "disconnected") {
+        clearRdpConnectingStatus(session.sessionId);
+      }
       // Background and superseded RDP sessions must not overwrite the status
       // of the tab the user is currently viewing.
       if (activeSession === session) {
@@ -10118,7 +10152,7 @@ temporary,
           showRdpConnectedStatus(session.sessionId);
         } else if (state === "connecting") {
           rdpConnectingStatusSessionId = session.sessionId;
-          setHeaderStatus("正在连接远程桌面…");
+          setHeaderStatus("正在连接远程桌面…", 5000);
         }
         else if (state.startsWith("error:"))
           showTransientStatus(state.slice(6));
@@ -10502,6 +10536,9 @@ temporary,
         session.reconnectAttempts = 0;
         if (session.connectionType !== "rdp" && rdpConnectedStatusSessionId)
           clearRdpConnectedStatus(rdpConnectedStatusSessionId);
+        if (activeSession === session && /^(?:正在连接)/.test(status.textContent)) {
+          setHeaderStatus("", 0);
+        }
       } else if (payload.state === "error"
           && previousState !== "connecting"
           && appSettings.autoReconnect
@@ -10986,7 +11023,7 @@ temporary,
       status.textContent = activeWorkspace === "全部连接"
         ? `找到 ${visibleCount} 个匹配“${serverSearchQuery}”的连接`
         : `${activeWorkspace} · 找到 ${visibleCount} 个匹配`;
-    else
+    else if (!sessions.size)
       status.textContent = activeWorkspace === "全部连接"
         ? `${profiles.length} 个服务器配置`
         : `${activeWorkspace} · ${visibleCount} 个连接`;
@@ -11074,7 +11111,16 @@ temporary,
     } else if (action === "copy-path") {
       if (!entry) return;
       post("clipboard.write", { text: entry.path })
-        .then(() => { sftpStatusText.textContent = `已复制远程路径：${entry.path}`; })
+        .then(() => {
+          showToast("已复制路径");
+          const prev = sftpStatusText.textContent;
+          sftpStatusText.textContent = `已复制远程路径：${entry.path}`;
+          setTimeout(() => {
+            if (sftpStatusText.textContent === `已复制远程路径：${entry.path}`) {
+              sftpStatusText.textContent = prev;
+            }
+          }, 3000);
+        })
         .catch(reportError);
     } else if (action === "copy-to") {
       copyRemoteEntry(entry);
@@ -12237,6 +12283,10 @@ temporary,
       }
       await post("tunnel.create", params);
       tunnelFormStatus.textContent = "已创建。";
+      setTimeout(() => {
+        if (tunnelFormStatus.textContent === "已创建。")
+          tunnelFormStatus.textContent = "";
+      }, 4000);
       tunnelListenPort.value = "";
       tunnelTargetHost.value = "";
       tunnelTargetPort.value = "";
@@ -13175,6 +13225,10 @@ temporary,
     populateSettingsForm();
     appSettings = currentSettings;
     settingsStatus.textContent = "已恢复默认值，保存后生效。";
+    setTimeout(() => {
+      if (settingsStatus.textContent === "已恢复默认值，保存后生效。")
+        settingsStatus.textContent = "";
+    }, 4000);
   });
   ["#setting-font-size", "#setting-font-family", "#setting-terminal-background",
     "#setting-terminal-foreground"].forEach(selector => {
@@ -13192,6 +13246,10 @@ temporary,
     document.querySelector("#setting-connection-color-rdp").value = defaultSettings.connectionTypeColorRdp;
     document.querySelector("#setting-connection-color-serial").value = defaultSettings.connectionTypeColorSerial;
     settingsStatus.textContent = "已恢复连接类型默认颜色，保存后生效。";
+    setTimeout(() => {
+      if (settingsStatus.textContent === "已恢复连接类型默认颜色，保存后生效。")
+        settingsStatus.textContent = "";
+    }, 4000);
   });
   const closeServerViewMenu = () => {
     if (!serverViewMenu?.hidden) serverViewMenu.hidden = true;
@@ -13366,6 +13424,10 @@ temporary,
     });
     if (rdpQualityPresetSelect) rdpQualityPresetSelect.value = "balanced";
     serverFormStatus.textContent = "RDP 高级设置已恢复为默认";
+    setTimeout(() => {
+      if (serverFormStatus.textContent === "RDP 高级设置已恢复为默认")
+        serverFormStatus.textContent = "";
+    }, 4000);
   };
   rdpResetDefaultsButton?.addEventListener("click", resetRdpAdvancedOptions);
   serialPortRefreshButton.addEventListener("click", () => refreshSerialPorts(serialPortSelect.value));
