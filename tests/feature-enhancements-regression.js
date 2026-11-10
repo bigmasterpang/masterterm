@@ -768,6 +768,31 @@ check('Top command runs natively on PTY without artificial alternate screen hija
         && !app.includes('topHasRestoredCursor')
         && !app.includes('session.sawTopExit'));
 
+// 65. Password Prompt Security & Autocomplete Suppression (sudo / passwd / su)
+const passRegexSandbox = {};
+let passRegexOk = false;
+try {
+    const pStart = app.indexOf('const passwordPromptRegex =');
+    const pEnd = app.indexOf('const isTerminalPasswordPrompt =');
+    if (pStart !== -1 && pEnd !== -1) {
+        const passRegexCode = app.slice(pStart, pEnd);
+        vm.runInNewContext(passRegexCode + '; this.isPasswordPromptText = isPasswordPromptText;', passRegexSandbox);
+        passRegexOk = passRegexSandbox.isPasswordPromptText('[sudo] password for master: ')
+            && passRegexSandbox.isPasswordPromptText('Password: ')
+            && passRegexSandbox.isPasswordPromptText('[sudo] 密码：')
+            && passRegexSandbox.isPasswordPromptText('Enter passphrase for key: ')
+            && !passRegexSandbox.isPasswordPromptText('user@host:~$ ls')
+            && !passRegexSandbox.isPasswordPromptText('root@host:~# cd /');
+    }
+} catch (_) {}
+
+check('Password prompt security strictly suppresses autocomplete and protects password entry',
+    passRegexOk
+    && app.includes('isTerminalPasswordPrompt')
+    && app.includes('session.passwordPromptActive')
+    && app.includes('if (session?.passwordPromptActive || isTerminalPasswordPrompt(session))')
+    && app.includes('!isPassword && submittedCommand'));
+
 if (failures) {
     console.log(failures + ' check(s) failed');
     process.exit(1);

@@ -2176,6 +2176,7 @@
       for (const command of source) {
         const value = String(command || "").replace(/[\r\n]+/g, " ").trim();
         if (!value) continue;
+        if (typeof isPasswordPromptText === "function" && isPasswordPromptText(value)) continue;
         const previous = merged.indexOf(value);
         if (previous >= 0) merged.splice(previous, 1);
         merged.push(value);
@@ -8720,6 +8721,9 @@ temporary,
   };
 
   const completionCandidates = session => {
+    if (session?.passwordPromptActive || isTerminalPasswordPrompt(session)) {
+      return [];
+    }
     const input = session.commandLine;
     if (!input) return [];
     const ranked = [];
@@ -8818,10 +8822,48 @@ temporary,
     session.completion.popup.hidden = true;
     session.completion.candidates = [];
   };
+
+  const passwordPromptRegex = /(?:password|passphrase|passcode|passwd|secret|token|pin|otp|verification\s*code|两步验证|密码|口令|凭据|安全码|验证码|暗号|パスワード|kennwort|mot\s*de\s*passe|contraseña)[^#$%>❯➜\r\n]*?[:：]\s*[*•·\s]*$/i;
+  const sudoPromptRegex = /(?:\[sudo\]|sudo|su\b|login\b).*?(?:password|passphrase|密码|口令)[^#$%>❯➜\r\n]*?[:：]\s*[*•·\s]*$/i;
+
+  const isPasswordPromptText = text => {
+    if (!text || typeof text !== "string") return false;
+    const trimmed = text.trim();
+    return passwordPromptRegex.test(trimmed) || sudoPromptRegex.test(trimmed);
+  };
+
+  const isTerminalPasswordPrompt = session => {
+    try {
+      if (session?.fullScreen || session?.remoteAlternateScreen) return false;
+      const buffer = session?.terminal?.buffer?.active;
+      if (!buffer) return false;
+      const cursorY = buffer.baseY + buffer.cursorY;
+      const currentLine = buffer.getLine(cursorY);
+      if (currentLine) {
+        const full = currentLine.translateToString(false);
+        const beforeCursor = full.slice(0, Math.max(0, buffer.cursorX));
+        if (isPasswordPromptText(beforeCursor) || isPasswordPromptText(full))
+          return true;
+      }
+      if (cursorY > 0) {
+        const prevLine = buffer.getLine(cursorY - 1);
+        if (prevLine) {
+          const prevFull = prevLine.translateToString(false);
+          if (isPasswordPromptText(prevFull))
+            return true;
+        }
+      }
+    } catch (_) {}
+    return false;
+  };
+
   const getTerminalBufferLineInfo = session => {
     try {
       if (session?.fullScreen || session?.remoteAlternateScreen) {
-        return { commandLine: "", isAtEnd: true };
+        return { commandLine: "", isAtEnd: true, hasPrompt: false };
+      }
+      if (session?.passwordPromptActive || isTerminalPasswordPrompt(session)) {
+        return { commandLine: "", isAtEnd: true, hasPrompt: false };
       }
       const buffer = session?.terminal?.buffer?.active;
       if (buffer) {
@@ -8834,15 +8876,17 @@ temporary,
           if (match && typeof match[1] === "string") {
             return {
               commandLine: match[1],
-              isAtEnd: textAfterCursor.trim().length === 0
+              isAtEnd: textAfterCursor.trim().length === 0,
+              hasPrompt: true
             };
           }
         }
       }
     } catch (_) {}
     return {
-      commandLine: session?.commandLine || "",
-      isAtEnd: (session?.commandCursor || 0) === (session?.commandLine?.length || 0)
+      commandLine: (session?.passwordPromptActive || isTerminalPasswordPrompt(session)) ? "" : (session?.commandLine || ""),
+      isAtEnd: (session?.commandCursor || 0) === (session?.commandLine?.length || 0),
+      hasPrompt: false
     };
   };
   const colorizeTerminalLine = line => {
@@ -8900,6 +8944,10 @@ temporary,
     popup.style.top = `${Math.max(margin, Math.min(top, panelBounds.height - popupHeight - margin))}px`;
   };
   const renderCompletion = session => {
+    if (session?.passwordPromptActive || isTerminalPasswordPrompt(session)) {
+      hideCompletion(session);
+      return;
+    }
     const completion = session.completion;
     const candidates = completionCandidates(session);
     completion.candidates = candidates;
@@ -8969,6 +9017,10 @@ temporary,
   };
   const showCompletion = session => {
     if (session.connectionType !== "ssh" && session.connectionType !== "local") return;
+    if (session?.passwordPromptActive || isTerminalPasswordPrompt(session)) {
+      hideCompletion(session);
+      return;
+    }
     session.completion.visible = true;
     session.completion.selected = 0;
     session.completion.explicitlySelected = false;
@@ -8986,6 +9038,9 @@ temporary,
     }
   };
   const acceptCompletion = (session, selected = session.completion.selected) => {
+    if (session?.passwordPromptActive || isTerminalPasswordPrompt(session)) {
+      return hideCompletion(session);
+    }
     const candidate = session.completion.candidates[selected];
     if (!candidate) return hideCompletion(session);
 
@@ -9242,6 +9297,7 @@ temporary,
       inputLine: "",
       commandLine: "",
       commandCursor: 0,
+      passwordPromptActive: false,
       commandHistory: connectionType === "local" ? [...localCommandHistory] : [],
       metrics: { state: "waiting", receivedAt: 0, cpuTotal: -1, cpuIdle: -1, netRx: -1, netTx: -1 },
       completion: { visible: false, explicitlySelected: false,
@@ -9436,7 +9492,15 @@ temporary,
       const completionKey = event.code === "Space" && event.ctrlKey
         && !event.shiftKey && !event.metaKey;
       if (completionKey) {
+        if (session.passwordPromptActive || isTerminalPasswordPrompt(session)) {
+          hideCompletion(session);
+          return false;
+        }
         const bufferInfo = getTerminalBufferLineInfo(session);
+        if (!bufferInfo.hasPrompt) {
+          hideCompletion(session);
+          return false;
+        }
         session.commandLine = bufferInfo.commandLine;
         session.commandCursor = session.commandLine.length;
         if (bufferInfo.isAtEnd) showCompletion(session);
@@ -9512,6 +9576,12 @@ temporary,
       }
       // 1. Tab 键分流：100% 优先保证 Linux 原生 Shell 补全，禁止浏览器焦点跳转
       if (event.key === "Tab" && !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey) {
+        if (session.passwordPromptActive || isTerminalPasswordPrompt(session)) {
+          hideCompletion(session);
+          event.preventDefault();
+          sendSessionInput(session, "\t");
+          return false;
+        }
         if (session.completion.visible && session.completion.explicitlySelected && session.completion.candidates.length) {
           event.preventDefault();
           acceptCompletion(session);
@@ -9527,6 +9597,10 @@ temporary,
 
       // 2. Enter 键：仅在显式上下键选中模板时填充，否则执行当前已输入命令
       if (event.key === "Enter" && !event.shiftKey && !event.ctrlKey && !event.altKey) {
+        if (session.passwordPromptActive || isTerminalPasswordPrompt(session)) {
+          hideCompletion(session);
+          return true;
+        }
         if (session.completion.visible && session.completion.explicitlySelected && session.completion.candidates.length) {
           event.preventDefault();
           acceptCompletion(session);
@@ -9540,7 +9614,15 @@ temporary,
 
       // 3. 方向右键 (ArrowRight)：智能增量分段补全核心按键
       if (event.key === "ArrowRight") {
+        if (session.passwordPromptActive || isTerminalPasswordPrompt(session)) {
+          hideCompletion(session);
+          return true;
+        }
         const bufferInfo = getTerminalBufferLineInfo(session);
+        if (!bufferInfo.hasPrompt) {
+          hideCompletion(session);
+          return true;
+        }
         session.commandLine = bufferInfo.commandLine;
         session.commandCursor = session.commandLine.length;
 
@@ -9609,12 +9691,18 @@ temporary,
       }
       let inputData = data;
       if (data === "\r" || data === "\n") {
+        const isPassword = session.passwordPromptActive || isTerminalPasswordPrompt(session);
         const submittedCommand = session.commandLine.trim();
         if (session.connectionType === "ssh" &&
             isInteractiveAlternateCommand(session.inputLine.trim()))
           enterAlternateScreen();
         session.inputLine = "";
-        if (submittedCommand) {
+        session.commandLine = "";
+        session.commandCursor = 0;
+        session.activeSegmentedTemplate = null;
+        session.passwordPromptActive = false;
+        hideCompletion(session);
+        if (!isPassword && submittedCommand) {
           session.commandHistory = mergeCommandHistory(
             session.commandHistory, [submittedCommand]);
           if (session.connectionType === "local") {
@@ -9625,30 +9713,35 @@ temporary,
               inputData = "\x7f".repeat(submittedCommand.length) + "cls\r";
           }
         }
-        session.commandLine = "";
-        session.commandCursor = 0;
-        session.activeSegmentedTemplate = null;
-        hideCompletion(session);
       } else if (data === "\x7f" || data === "\b") {
-        session.inputLine = session.inputLine.slice(0, -1);
-        if (session.commandCursor > 0) {
-          session.commandLine = session.commandLine.slice(0, session.commandCursor - 1)
-            + session.commandLine.slice(session.commandCursor);
-          session.commandCursor -= 1;
+        if (session.passwordPromptActive || isTerminalPasswordPrompt(session)) {
+          session.commandLine = "";
+          session.commandCursor = 0;
+          session.inputLine = "";
+          session.activeSegmentedTemplate = null;
+          hideCompletion(session);
         } else {
-          const bufferInfo = getTerminalBufferLineInfo(session);
-          if (bufferInfo.commandLine) {
-            session.commandLine = bufferInfo.commandLine.slice(0, -1);
-            session.commandCursor = session.commandLine.length;
+          session.inputLine = session.inputLine.slice(0, -1);
+          if (session.commandCursor > 0) {
+            session.commandLine = session.commandLine.slice(0, session.commandCursor - 1)
+              + session.commandLine.slice(session.commandCursor);
+            session.commandCursor -= 1;
+          } else {
+            const bufferInfo = getTerminalBufferLineInfo(session);
+            if (bufferInfo.commandLine) {
+              session.commandLine = bufferInfo.commandLine.slice(0, -1);
+              session.commandCursor = session.commandLine.length;
+            }
           }
+          if (session.completion.visible) renderCompletion(session);
+          if (!session.commandLine) hideCompletion(session);
         }
-        if (session.completion.visible) renderCompletion(session);
-        if (!session.commandLine) hideCompletion(session);
       } else if (data === "\x03" || data === "\x15" || data === "\x0c" || data === "\x1a") {
         session.commandLine = "";
         session.commandCursor = 0;
         session.inputLine = "";
         session.activeSegmentedTemplate = null;
+        session.passwordPromptActive = false;
         hideCompletion(session);
       } else if (data === "\x1b[A" || data === "\x1bOA" || data === "\x1b[B" || data === "\x1bOB") {
         session.commandLine = "";
@@ -9661,23 +9754,35 @@ temporary,
         session.commandCursor = Math.min(session.commandLine.length, session.commandCursor + 1);
         hideCompletion(session);
       } else if (data.length === 1 && data >= " " && data <= "~") {
-        if (!session.commandLine && !session.commandCursor) {
-          const bufferInfo = getTerminalBufferLineInfo(session);
-          if (bufferInfo.commandLine) {
-            session.commandLine = bufferInfo.commandLine;
-            session.commandCursor = session.commandLine.length;
+        if (session.passwordPromptActive || isTerminalPasswordPrompt(session)) {
+          session.passwordPromptActive = true;
+          session.commandLine = "";
+          session.commandCursor = 0;
+          session.inputLine = "";
+          session.activeSegmentedTemplate = null;
+          hideCompletion(session);
+        } else {
+          if (!session.commandLine && !session.commandCursor) {
+            const bufferInfo = getTerminalBufferLineInfo(session);
+            if (bufferInfo.commandLine) {
+              session.commandLine = bufferInfo.commandLine;
+              session.commandCursor = session.commandLine.length;
+            }
           }
-        }
-        session.inputLine += data;
-        session.commandLine = session.commandLine.slice(0, session.commandCursor)
-          + data + session.commandLine.slice(session.commandCursor);
-        session.commandCursor += data.length;
-        if (session.completion.visible) {
-          renderCompletion(session);
-        } else if (session.commandLine.trim().length >= 2 && session.commandCursor === session.commandLine.length) {
-          const cands = completionCandidates(session);
-          if (cands.length > 0) {
-            showCompletion(session);
+          session.inputLine += data;
+          session.commandLine = session.commandLine.slice(0, session.commandCursor)
+            + data + session.commandLine.slice(session.commandCursor);
+          session.commandCursor += data.length;
+          if (session.completion.visible) {
+            renderCompletion(session);
+          } else if (session.commandLine.trim().length >= 2 && session.commandCursor === session.commandLine.length) {
+            const bufferInfo = getTerminalBufferLineInfo(session);
+            if (bufferInfo.hasPrompt && !session.passwordPromptActive && !isTerminalPasswordPrompt(session)) {
+              const cands = completionCandidates(session);
+              if (cands.length > 0) {
+                showCompletion(session);
+              }
+            }
           }
         }
       }
@@ -10666,8 +10771,25 @@ temporary,
       session.fullScreen = false;
       session.pendingExit = false;
     }
+    const isPasswordOutput = isPasswordPromptText(text);
+    if (isPasswordOutput) {
+      session.passwordPromptActive = true;
+      session.commandLine = "";
+      session.commandCursor = 0;
+      session.inputLine = "";
+      session.activeSegmentedTemplate = null;
+      hideCompletion(session);
+    }
     session.terminal.write(colorizeTerminalOutput(text), () => {
       if (remoteAlternateExited) session.syncAfterRemoteAlternateExit?.();
+      if (isPasswordOutput || isTerminalPasswordPrompt(session)) {
+        session.passwordPromptActive = true;
+        session.commandLine = "";
+        session.commandCursor = 0;
+        session.inputLine = "";
+        session.activeSegmentedTemplate = null;
+        hideCompletion(session);
+      }
     });
   };
 
